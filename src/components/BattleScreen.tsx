@@ -311,6 +311,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const raftBlowOffsetRef = useRef<[number, number]>([0, 0])
   const raftWaveSwayRef = useRef<[number, number]>([0, 0])
   const midFlightSabotageRef = useRef<MidFlightSabotage | null>(null)
+  const lastShooterByTeamRef = useRef<[number, number]>([0, -1])
 
   useEffect(() => {
     players.forEach((p, idx) => {
@@ -1102,50 +1103,53 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   ) => {
     if (checkWinConditions(updatedPlayers)) return
 
-    // Find next alive player, alternating teams whenever possible
     const currentTeam = updatedPlayers[activeIdx]?.team ?? 0
-    const desiredTeam: 0 | 1 = currentTeam === 0 ? 1 : 0
+    lastShooterByTeamRef.current[currentTeam] = activeIdx
 
-    let nextIdx = -1
-    for (let offset = 1; offset <= updatedPlayers.length; offset++) {
-      const candidate = (activeIdx + offset) % updatedPlayers.length
-      if (
-        !isBoatEliminated(updatedPlayers[candidate]) &&
-        updatedPlayers[candidate].team === desiredTeam
-      ) {
-        nextIdx = candidate
-        break
-      }
-    }
-
-    if (nextIdx === -1) {
-      for (let offset = 1; offset <= updatedPlayers.length; offset++) {
-        const candidate = (activeIdx + offset) % updatedPlayers.length
-        if (!isBoatEliminated(updatedPlayers[candidate])) {
-          nextIdx = candidate
-          break
+    const pickNextAliveFromTeam = (team: 0 | 1): number => {
+      const startFrom = lastShooterByTeamRef.current[team]
+      const n = updatedPlayers.length
+      for (let offset = 1; offset <= n; offset++) {
+        const candidate = ((startFrom >= 0 ? startFrom : -1) + offset + n) % n
+        if (
+          updatedPlayers[candidate].team === team &&
+          !isBoatEliminated(updatedPlayers[candidate])
+        ) {
+          return candidate
         }
       }
+      return -1
     }
 
+    let nextTeam: 0 | 1 = currentTeam === 0 ? 1 : 0
+    let nextIdx = pickNextAliveFromTeam(nextTeam)
+    if (nextIdx === -1) {
+      nextTeam = currentTeam
+      nextIdx = pickNextAliveFromTeam(nextTeam)
+    }
     if (nextIdx === -1) nextIdx = 0
 
+    // Handle „Halb õnn“ skipNextTurn while preserving fair team rotation
     if (updatedPlayers[nextIdx].skipNextTurn) {
       const skippedName = updatedPlayers[nextIdx].name
       updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], skipNextTurn: false }
+      lastShooterByTeamRef.current[nextTeam] = nextIdx
       addBanner(CANVAS_W / 2, 180, `${skippedName} jätab „Halb õnn“ tõttu vahele!`, '#c084fc')
-      // Find next alive player after skipped one
-      for (let offset = 1; offset <= updatedPlayers.length; offset++) {
-        const candidate = (nextIdx + offset) % updatedPlayers.length
-        if (!isBoatEliminated(updatedPlayers[candidate])) {
-          nextIdx = candidate
-          break
-        }
+
+      const altTeam: 0 | 1 = nextTeam === 0 ? 1 : 0
+      const altIdx = pickNextAliveFromTeam(altTeam)
+      if (altIdx !== -1) {
+        nextTeam = altTeam
+        nextIdx = altIdx
+      } else {
+        const fallbackIdx = pickNextAliveFromTeam(nextTeam)
+        if (fallbackIdx !== -1) nextIdx = fallbackIdx
       }
     }
 
+    lastShooterByTeamRef.current[nextTeam] = nextIdx
+
     // Default target to first alive enemy boat
-    const nextTeam = updatedPlayers[nextIdx].team
     const firstAliveEnemy = updatedPlayers.findIndex(
       (p) => p.team !== nextTeam && !isBoatEliminated(p)
     )
