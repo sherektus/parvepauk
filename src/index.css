@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Fredoka', system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+  letter-spacing: 0.04em;
+}
+
+.font-retro {
+  font-family: 'VT323', monospace;
+}
+
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.pixel-box {
+  box-shadow:
+    0 -4px 0 0 #0f172a,
+    0 4px 0 0 #0f172a,
+    -4px 0 0 0 #0f172a,
+    4px 0 0 0 #0f172a,
+    0 8px 0 0 rgba(15, 23, 42, 0.45);
+}
+
+.pixel-btn {
+  box-shadow:
+    0 -3px 0 0 #0f172a,
+    0 3px 0 0 #0f172a,
+    -3px 0 0 0 #0f172a,
+    3px 0 0 0 #0f172a,
+    inset 0 -4px 0 0 rgba(0, 0, 0, 0.28),
+    inset 0 3px 0 0 rgba(255, 255, 255, 0.28);
+  transition: transform 0.08s ease;
+}
+
+.pixel-btn:active:not(:disabled) {
+  transform: translateY(2px);
+}
