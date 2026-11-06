@@ -59,6 +59,7 @@ export interface PlayerBattleState {
 interface BetOption {
   id: 'normal' | 'high' | 'ultra'
   sips: number
+  captainDamage: number
   label: string
   subLabel: string
   raftLeftX: number
@@ -175,24 +176,27 @@ function rollTurnBetOptions(): [BetOption, BetOption, BetOption] {
     {
       id: 'normal',
       sips: lowSips,
+      captainDamage: 1,
       label: `${lowSips} ${lowSips === 1 ? 'lonks' : 'lonksu'}`,
-      subLabel: lowSips === 1 ? 'Tavakaugus' : 'Kõikumisega sihtimine',
+      subLabel: 'Kaptenile pihta: -1 elu',
       raftLeftX: 305 + jitter1,
       raftRightX: 975 - jitter1,
     },
     {
       id: 'high',
       sips: midSips,
+      captainDamage: 1,
       label: `${midSips} lonksu`,
-      subLabel: 'Paadid kaugemal + raskem sihtida!',
+      subLabel: 'Kaugem + Kaptenile: -1 elu',
       raftLeftX: 225 + jitter2,
       raftRightX: 1055 - jitter2,
     },
     {
       id: 'ultra',
       sips: ultraSips,
+      captainDamage: 3,
       label: `🔥 ULTRA ALL IN (${ultraSips} LONKSU) 🔥`,
-      subLabel: 'Maksimaalne distants + tormine sihtimine!',
+      subLabel: '💥 KAPTENILE PIHTA: -3 ELU! 💥',
       raftLeftX: 170,
       raftRightX: 1110,
     },
@@ -623,140 +627,109 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         proj.trail.push({ x: proj.x, y: proj.y })
         if (proj.trail.length > 22) proj.trail.shift()
 
-        proj.x += proj.vx
-        proj.y += proj.vy
-        proj.vx += windRef.current * 0.085
-        proj.vy += GRAVITY
-
         const targetSide: 0 | 1 = proj.shooterSide === 0 ? 1 : 0
         const targetPlayerIdx = targetIdxRef.current
         const targetCenter = getCurrentRaftX(targetSide)
         const targetPlayer = playersRef.current[targetPlayerIdx]
+        const bobY = Math.round(Math.sin(tick * 0.05 + targetSide * 1.8) * 5)
+        const baseDeckY = WATER_Y - 26 + bobY
 
-        // Mid-flight Brainrot boat-blow sabotage
-        if (
-          !proj.sabotageChecked &&
-          ((proj.shooterSide === 0 && proj.x > CANVAS_W * 0.46) ||
-            (proj.shooterSide === 1 && proj.x < CANVAS_W * 0.54))
-        ) {
-          proj.sabotageChecked = true
-          const distToTargetX = Math.abs(targetCenter - proj.x)
-          const blowChance = betOpt.sips >= 2 ? 0.28 : 0.2
-          if (distToTargetX < 620 && Math.random() < blowChance) {
-            const randChar =
-              BRAINROT_CHARACTERS[Math.floor(Math.random() * BRAINROT_CHARACTERS.length)]
-            sound.playBrainrotSound()
-            const pushDir =
-              targetCenter > CANVAS_W - 220
-                ? -1
-                : targetCenter < 220
-                ? 1
-                : Math.random() > 0.5
-                ? 1
-                : -1
-            const pushAmount = pushDir * (135 + Math.random() * 40)
-            midFlightSabotageRef.current = {
-              charName: randChar.name,
-              charId: randChar.id,
-              targetSide,
-              pushTargetOffset: pushAmount,
-              timer: 85,
+        // Step projectile in 4 sub-steps per frame for pixel-accurate hitboxes (no tunneling!)
+        const SUB_STEPS = 4
+        for (let s = 0; s < SUB_STEPS; s++) {
+          proj.x += proj.vx / SUB_STEPS
+          proj.y += proj.vy / SUB_STEPS
+          proj.vx += (windRef.current * 0.085) / SUB_STEPS
+          proj.vy += GRAVITY / SUB_STEPS
+
+          // Mid-flight Brainrot boat-blow sabotage
+          if (
+            !proj.sabotageChecked &&
+            ((proj.shooterSide === 0 && proj.x > CANVAS_W * 0.46) ||
+              (proj.shooterSide === 1 && proj.x < CANVAS_W * 0.54))
+          ) {
+            proj.sabotageChecked = true
+            const distToTargetX = Math.abs(targetCenter - proj.x)
+            const blowChance = betOpt.sips >= 2 ? 0.28 : 0.2
+            if (distToTargetX < 620 && Math.random() < blowChance) {
+              const randChar =
+                BRAINROT_CHARACTERS[Math.floor(Math.random() * BRAINROT_CHARACTERS.length)]
+              sound.playBrainrotSound()
+              const pushDir =
+                targetCenter > CANVAS_W - 220
+                  ? -1
+                  : targetCenter < 220
+                  ? 1
+                  : Math.random() > 0.5
+                  ? 1
+                  : -1
+              const pushAmount = pushDir * (135 + Math.random() * 40)
+              midFlightSabotageRef.current = {
+                charName: randChar.name,
+                charId: randChar.id,
+                targetSide,
+                pushTargetOffset: pushAmount,
+                timer: 85,
+              }
+              addBanner(
+                targetCenter,
+                WATER_Y - 195,
+                `${randChar.name.toUpperCase()} PUHUS PAADI EEMALE!`,
+                '#38bdf8'
+              )
             }
-            addBanner(
-              targetCenter,
-              WATER_Y - 195,
-              `${randChar.name.toUpperCase()} PUHUS PAADI EEMALE!`,
-              '#38bdf8'
-            )
           }
-        }
 
-        // 1. Check shield collision
-        if (
-          targetPlayer.hasShield &&
-          Math.hypot(proj.x - targetCenter, proj.y - (WATER_Y - 54)) < 155
-        ) {
-          sound.playShieldBlock()
-          spawnSplash(proj.x, proj.y, '#60a5fa', 24)
-          addBanner(targetCenter, WATER_Y - 150, 'KILP BLOKEERIS!', '#60a5fa')
-          projectileRef.current = null
+          // 1. Check Shield Hitbox (matches drawn dome arc radius 160 around baseDeckY - 40)
+          if (
+            targetPlayer.hasShield &&
+            proj.y <= baseDeckY + 10 &&
+            Math.hypot(proj.x - targetCenter, proj.y - (baseDeckY - 40)) <= 166
+          ) {
+            sound.playShieldBlock()
+            spawnSplash(proj.x, proj.y, '#60a5fa', 24)
+            addBanner(targetCenter, WATER_Y - 150, 'KILP BLOKEERIS!', '#60a5fa')
+            projectileRef.current = null
 
-          const updated = playersRef.current.map((p, i) =>
-            i === targetPlayerIdx ? { ...p, hasShield: false } : p
-          )
-          playersRef.current = updated
-          setPlayers(updated)
+            const updated = playersRef.current.map((p, i) =>
+              i === targetPlayerIdx ? { ...p, hasShield: false } : p
+            )
+            playersRef.current = updated
+            setPlayers(updated)
 
-          setTimeout(() => {
-            resolveShotEnd(false, true, 'Vastase kilp blokeeris lasu!')
-          }, 650)
-          return
-        }
+            setTimeout(() => {
+              resolveShotEnd(false, true, 'Vastase kilp blokeeris lasu!')
+            }, 650)
+            return
+          }
 
-        // 2. Check Captain collision
-        const capX = targetCenter
-        const capY = WATER_Y - 92
-        if (Math.hypot(proj.x - capX, proj.y - capY) < 28) {
-          sound.playHit()
-          spawnExplosion(proj.x, proj.y, proj.isUltra ? 56 : 42, true)
-          captainShakeRef.current[targetSide] = 32
-
-          const reaction =
-            CAPTAIN_HIT_REACTIONS[Math.floor(Math.random() * CAPTAIN_HIT_REACTIONS.length)]
-          const dmg = proj.isUltra ? 2 : 1
-          addBanner(capX, capY - 54, `KAPTEN PIHTAS (-${dmg} ELU)! "${reaction}"`, '#f87171')
-
-          const updated = playersRef.current.map((p, i) =>
-            i === targetPlayerIdx
-              ? { ...p, captainLives: Math.max(0, p.captainLives - dmg) }
-              : p
-          )
-          playersRef.current = updated
-          setPlayers(updated)
-          projectileRef.current = null
-
-          setTimeout(() => {
-            resolveShotEnd(true, false, `Tabasid vastase kaptenit! (${reaction})`)
-          }, 950)
-          return
-        }
-
-        // 3. Check Crew or Raft Deck collision
-        const deckY = WATER_Y - 26
-        const inRaftX = Math.abs(proj.x - targetCenter) <= RAFT_HALF_WIDTH + 10
-        const nearDeckY = proj.y >= deckY - 38 && proj.y <= WATER_Y + 6
-
-        if (inRaftX && nearDeckY) {
-          const updated = playersRef.current.map((p) => ({
-            ...p,
-            crew: p.crew.map((c) => ({ ...c })),
-          }))
-
-          let hitCount = 0
-          const impactRelX = proj.x - targetCenter
-          const blastRadius = proj.isUltra ? 62 : 40
-
-          updated[targetPlayerIdx].crew.forEach((c) => {
-            if (c.inWater) return
-            const dist = Math.abs(c.relX - impactRelX)
-            if (dist < blastRadius) {
-              hitCount++
-              c.airborne = true
-              const pushDir = c.relX >= 0 ? 1 : -1
-              const strength = dist < 24 ? 7.4 : 5.5
-              c.vx = pushDir * (strength + Math.random() * 1.8) + proj.vx * 0.22
-              c.vy = -6.2 - Math.random() * 2.5
-            }
-          })
-
-          if (hitCount > 0) {
+          // 2. Check Captain Hitbox (matches full drawn Captain crown + 56x56 portrait + coat: X ±36, Y from baseDeckY - 138 to baseDeckY - 40)
+          const capX = targetCenter
+          const capTopY = baseDeckY - 138
+          const capBottomY = baseDeckY - 40
+          if (
+            Math.abs(proj.x - capX) <= 36 &&
+            proj.y >= capTopY &&
+            proj.y <= capBottomY
+          ) {
             sound.playHit()
-            spawnExplosion(proj.x, proj.y, proj.isUltra ? 52 : 38, true)
+            spawnExplosion(proj.x, proj.y, proj.isUltra ? 58 : 42, true)
+            captainShakeRef.current[targetSide] = 32
+
+            const reaction =
+              CAPTAIN_HIT_REACTIONS[Math.floor(Math.random() * CAPTAIN_HIT_REACTIONS.length)]
+            const dmg = proj.isUltra ? 3 : 1
             addBanner(
-              proj.x,
-              proj.y - 38,
-              hitCount > 1 ? `SUPERPAUK! (${hitCount} madrust lendas!)` : 'PIHTAS!',
-              '#fde047'
+              capX,
+              capTopY - 16,
+              `KAPTEN PIHTAS (-${dmg} ELU)! "${reaction}"`,
+              '#f87171'
+            )
+
+            const updated = playersRef.current.map((p, i) =>
+              i === targetPlayerIdx
+                ? { ...p, captainLives: Math.max(0, p.captainLives - dmg) }
+                : p
             )
             playersRef.current = updated
             setPlayers(updated)
@@ -766,46 +739,108 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
               resolveShotEnd(
                 true,
                 false,
-                hitCount > 1
-                  ? `Võimas tabamus! Lükkasid ${hitCount} meeskonnaliiget korraga!`
-                  : 'Tabasid vastase meeskonnaliiget!'
+                `Tabasid vastase kaptenit (-${dmg} elu)! (${reaction})`
               )
-            }, 1150)
+            }, 950)
             return
-          } else if (proj.y >= deckY) {
-            sound.playHit()
-            spawnExplosion(proj.x, proj.y)
-            addBanner(proj.x, proj.y - 30, 'PARVE LAUDADESSE (MADRUSED PÄÄSESID)!', '#cbd5e1')
+          }
+
+          // 3. Check Direct Crew Hitbox OR Raft Deck Hitbox
+          const directCrewHit = targetPlayer.crew.some(
+            (c) =>
+              !c.inWater &&
+              !c.airborne &&
+              Math.abs(proj.x - (targetCenter + c.relX)) <= 20 &&
+              proj.y >= baseDeckY - 48 &&
+              proj.y <= baseDeckY + 8
+          )
+
+          const hitRaftDeck =
+            Math.abs(proj.x - targetCenter) <= RAFT_HALF_WIDTH + 10 &&
+            proj.y >= baseDeckY - 8 &&
+            proj.y <= WATER_Y + 8
+
+          if (directCrewHit || hitRaftDeck) {
+            const updated = playersRef.current.map((p) => ({
+              ...p,
+              crew: p.crew.map((c) => ({ ...c })),
+            }))
+
+            let hitCount = 0
+            const impactRelX = proj.x - targetCenter
+            const blastRadius = proj.isUltra ? 68 : 46
+
+            updated[targetPlayerIdx].crew.forEach((c) => {
+              if (c.inWater) return
+              const dist = Math.abs(c.relX - impactRelX)
+              if (dist <= blastRadius) {
+                hitCount++
+                c.airborne = true
+                const pushDir = c.relX >= 0 ? 1 : -1
+                const strength = dist < 24 ? 7.4 : 5.5
+                c.vx = pushDir * (strength + Math.random() * 1.8) + proj.vx * 0.22
+                c.vy = -6.2 - Math.random() * 2.5
+              }
+            })
+
+            if (hitCount > 0) {
+              sound.playHit()
+              spawnExplosion(proj.x, proj.y, proj.isUltra ? 52 : 38, true)
+              addBanner(
+                proj.x,
+                proj.y - 38,
+                hitCount > 1 ? `SUPERPAUK! (${hitCount} madrust lendas!)` : 'PIHTAS!',
+                '#fde047'
+              )
+              playersRef.current = updated
+              setPlayers(updated)
+              projectileRef.current = null
+
+              setTimeout(() => {
+                resolveShotEnd(
+                  true,
+                  false,
+                  hitCount > 1
+                    ? `Võimas tabamus! Lükkasid ${hitCount} meeskonnaliiget korraga!`
+                    : 'Tabasid vastase meeskonnaliiget!'
+                )
+              }, 1150)
+              return
+            } else if (hitRaftDeck) {
+              sound.playHit()
+              spawnExplosion(proj.x, proj.y)
+              addBanner(proj.x, proj.y - 30, 'PARVE LAUDADESSE (MADRUSED PÄÄSESID)!', '#cbd5e1')
+              projectileRef.current = null
+              setTimeout(() => {
+                resolveShotEnd(
+                  false,
+                  false,
+                  'Kuul tabas ainult parve tühja tekki – ükski tegelane ei saanud pihta!'
+                )
+              }, 850)
+              return
+            }
+          }
+
+          // 4. Missed into water or off-screen
+          if (proj.y >= WATER_Y || proj.x < -80 || proj.x > CANVAS_W + 80) {
+            if (proj.y >= WATER_Y) {
+              sound.playSplash()
+              spawnSplash(proj.x, WATER_Y, '#bae6fd', 24)
+              addBanner(proj.x, WATER_Y - 32, 'PLÄRTS! MÖÖDA!', '#7dd3fc')
+            }
             projectileRef.current = null
             setTimeout(() => {
               resolveShotEnd(
                 false,
                 false,
-                'Kuul tabas ainult parve laudu – ükski tegelane ei saanud pihta!'
+                midFlightSabotageRef.current
+                  ? `${midFlightSabotageRef.current.charName} puhus paadi eest ära ja lask läks vette!`
+                  : 'Kahurikuul maandus otse merre!'
               )
-            }, 850)
+            }, 750)
             return
           }
-        }
-
-        // 4. Missed into water or off-screen
-        if (proj.y >= WATER_Y || proj.x < -80 || proj.x > CANVAS_W + 80) {
-          if (proj.y >= WATER_Y) {
-            sound.playSplash()
-            spawnSplash(proj.x, WATER_Y, '#bae6fd', 24)
-            addBanner(proj.x, WATER_Y - 32, 'PLÄRTS! MÖÖDA!', '#7dd3fc')
-          }
-          projectileRef.current = null
-          setTimeout(() => {
-            resolveShotEnd(
-              false,
-              false,
-              midFlightSabotageRef.current
-                ? `${midFlightSabotageRef.current.charName} puhus paadi eest ära ja lask läks vette!`
-                : 'Kahurikuul maandus otse merre!'
-            )
-          }, 750)
-          return
         }
       }
 
@@ -1323,7 +1358,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     let opponentTurnSips = lastShotResult.hit ? selectedBetSips : 0
 
     if (outcome.id === 'counter_sip') {
-      opponentTurnSips += 1
+      // Vastulöök: ründaja (laskja) peab ise võtma 1 lisalonksu!
+      shooterTurnSips += 1
     }
     if (outcome.id === 'bad_luck') {
       shooterTurnSips += 1
@@ -1749,6 +1785,17 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   })}
                 </div>
 
+                {isUltraAllIn ? (
+                  <div className="bg-rose-950 border-2 border-amber-400 px-3 py-2 mb-3.5 text-sm font-bold text-amber-300">
+                    ⚡ ULTRA ALL IN ERIEFEKT: Kui saad vastase kaptenile pihta, kaotab ta korraga{' '}
+                    <span className="text-white underline">3 ELU</span> (teiste valikutega 1 elu)!
+                  </div>
+                ) : (
+                  <p className="text-xs text-sky-300 font-semibold mb-3">
+                    Tavalisel lasul kaotab kapten pihtasaamisel 1 elu (ULTRA ALL IN lasuga 3 elu!).
+                  </p>
+                )}
+
                 <div className="flex gap-3">
                   {isMultiBoatMode && (
                     <button
@@ -1794,7 +1841,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 </p>
                 <p className="text-xs sm:text-sm text-sky-200">
                   Mängus on: <strong className="text-amber-300">{selectedBetSips} lonksu</strong> •
-                  Paatide kaugus: <strong className="text-amber-300">{currentDistanceMeters} m</strong>
+                  Kaptenile pihta:{' '}
+                  <strong className="text-rose-400">
+                    -{currentBetOption.captainDamage} elu
+                  </strong>{' '}
+                  • Paatide kaugus:{' '}
+                  <strong className="text-amber-300">{currentDistanceMeters} m</strong>
                 </p>
               </div>
             </div>

@@ -54,7 +54,8 @@ export const RiskWheelModal: React.FC<RiskWheelModalProps> = ({
     let opponentSips = shotHit ? betSips : 0
 
     if (outcome?.id === 'counter_sip') {
-      opponentSips += 1
+      // Vastulöök: ründaja (laskja) võtab ise lonksu!
+      shooterSips += 1
     }
     if (outcome?.id === 'bad_luck') {
       shooterSips += 1

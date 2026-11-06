@@ -189,7 +189,7 @@ export const WHEEL_OUTCOMES: WheelOutcome[] = [
   {
     id: 'counter_sip',
     title: 'Vastulöök',
-    shortDesc: 'Vastane võtab ühe väikese lonksu!',
+    shortDesc: 'Vastulöök! Ründaja (laskja) võtab ise 1 lisalonksu!',
     color: '#ef4444',
   },
   {
