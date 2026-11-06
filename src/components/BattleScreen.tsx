@@ -106,6 +106,13 @@ interface ExplosionRing {
   label: string
 }
 
+interface WaterSplashPlume {
+  x: number
+  y: number
+  life: number
+  maxLife: number
+}
+
 interface MidFlightSabotage {
   charName: string
   charId: BrainrotId
@@ -318,6 +325,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const projectileRef = useRef<Projectile | null>(null)
   const particlesRef = useRef<Particle[]>([])
   const explosionsRef = useRef<ExplosionRing[]>([])
+  const splashesRef = useRef<WaterSplashPlume[]>([])
   const screenShakeRef = useRef<number>(0)
   const impactFlashRef = useRef<number>(0)
   const bannersRef = useRef<FloatingBanner[]>([])
@@ -358,19 +366,28 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     )
   }
 
-  const spawnSplash = (x: number, y: number, color = '#e0f2fe', count = 18) => {
-    for (let i = 0; i < count; i++) {
-      const angle = -Math.PI * 0.15 - Math.random() * Math.PI * 0.7
-      const speed = 2 + Math.random() * 5.5
-      particlesRef.current.push({
+  const spawnSplash = (x: number, y: number, color = '#e0f2fe', count = 18, isBigMiss = false) => {
+    const splashColors = ['#ffffff', '#e0f2fe', '#bae6fd', '#7dd3fc', '#38bdf8', color]
+    if (isBigMiss) {
+      splashesRef.current.push({
         x,
         y,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        color,
-        size: 5 + Math.floor(Math.random() * 4),
         life: 0,
-        maxLife: 24 + Math.floor(Math.random() * 14),
+        maxLife: 40,
+      })
+    }
+    for (let i = 0; i < count; i++) {
+      const angle = -Math.PI * 0.1 - Math.random() * Math.PI * 0.8
+      const speed = (isBigMiss ? 3.5 : 2) + Math.random() * (isBigMiss ? 8.5 : 5.5)
+      particlesRef.current.push({
+        x: x + (Math.random() - 0.5) * (isBigMiss ? 24 : 8),
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - (isBigMiss ? 2.2 : 0),
+        color: splashColors[Math.floor(Math.random() * splashColors.length)],
+        size: (isBigMiss ? 6 : 5) + Math.floor(Math.random() * (isBigMiss ? 6 : 4)),
+        life: 0,
+        maxLife: (isBigMiss ? 32 : 24) + Math.floor(Math.random() * 18),
       })
     }
   }
@@ -622,6 +639,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         return ex.life < ex.maxLife
       })
 
+      splashesRef.current = splashesRef.current.filter((sp) => {
+        sp.life++
+        return sp.life < sp.maxLife
+      })
+
       const proj = projectileRef.current
       if (proj) {
         proj.trail.push({ x: proj.x, y: proj.y })
@@ -824,11 +846,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
           // 4. Missed into water or off-screen
           if (proj.y >= WATER_Y || proj.x < -80 || proj.x > CANVAS_W + 80) {
-            if (proj.y >= WATER_Y) {
-              sound.playSplash()
-              spawnSplash(proj.x, WATER_Y, '#bae6fd', 24)
-              addBanner(proj.x, WATER_Y - 32, 'PLÄRTS! MÖÖDA!', '#7dd3fc')
-            }
+            const splashX = Math.max(40, Math.min(CANVAS_W - 40, proj.x))
+            sound.playSplash()
+            spawnSplash(splashX, WATER_Y, '#bae6fd', 48, true)
+            addBanner(splashX, WATER_Y - 58, '💦 PLÄRTS! MÖÖDA! 💦', '#7dd3fc')
             projectileRef.current = null
             setTimeout(() => {
               resolveShotEnd(
@@ -836,9 +857,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 false,
                 midFlightSabotageRef.current
                   ? `${midFlightSabotageRef.current.charName} puhus paadi eest ära ja lask läks vette!`
-                  : 'Kahurikuul maandus otse merre!'
+                  : 'Kahurikuul maandus suure plärtsuga otse merre!'
               )
-            }, 750)
+            }, 900)
             return
           }
         }
@@ -1140,6 +1161,74 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       particlesRef.current.forEach((pt) => {
         ctx.fillStyle = pt.color
         ctx.fillRect(Math.round(pt.x), Math.round(pt.y), pt.size, pt.size)
+      })
+
+      // Draw water geyser plumes & expanding water rings on missed shots
+      splashesRef.current.forEach((sp) => {
+        const progress = sp.life / sp.maxLife
+        const arc = Math.sin(progress * Math.PI)
+        const colHeight = Math.round(arc * 95)
+        const colWidth = Math.round(38 * (1 - progress * 0.45))
+
+        ctx.save()
+
+        // Expanding water surface ripple rings
+        const rippleW = 24 + progress * 96
+        const rippleH = 7 + progress * 16
+        ctx.strokeStyle = progress < 0.5 ? '#ffffff' : '#7dd3fc'
+        ctx.lineWidth = Math.max(2, Math.round(5 * (1 - progress)))
+        ctx.beginPath()
+        ctx.ellipse(sp.x, sp.y + 4, rippleW, rippleH, 0, 0, Math.PI * 2)
+        ctx.stroke()
+
+        if (progress > 0.15) {
+          ctx.strokeStyle = '#38bdf8'
+          ctx.lineWidth = 2
+          ctx.beginPath()
+          ctx.ellipse(sp.x, sp.y + 4, rippleW * 0.65, rippleH * 0.65, 0, 0, Math.PI * 2)
+          ctx.stroke()
+        }
+
+        // Pixelated rising water column geyser
+        if (colHeight > 6) {
+          ctx.fillStyle = '#38bdf8'
+          ctx.fillRect(
+            Math.round(sp.x - colWidth / 2),
+            Math.round(sp.y - colHeight * 0.75),
+            colWidth,
+            Math.round(colHeight * 0.75)
+          )
+          ctx.fillStyle = '#bae6fd'
+          ctx.fillRect(
+            Math.round(sp.x - colWidth * 0.35),
+            Math.round(sp.y - colHeight * 0.92),
+            Math.round(colWidth * 0.7),
+            Math.round(colHeight * 0.92)
+          )
+          // White foam crown at the top of the splash
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(
+            Math.round(sp.x - colWidth * 0.55),
+            Math.round(sp.y - colHeight - 8),
+            Math.round(colWidth * 1.1),
+            14
+          )
+          // Side foam wings
+          ctx.fillRect(
+            Math.round(sp.x - colWidth * 0.85),
+            Math.round(sp.y - colHeight * 0.55),
+            12,
+            12
+          )
+          ctx.fillRect(
+            Math.round(sp.x + colWidth * 0.85 - 12),
+            Math.round(sp.y - colHeight * 0.55),
+            12,
+            12
+          )
+        }
+
+        ctx.restore()
       })
 
       // Draw expanding explosion shockwaves, fireballs & "PAUK!" starbursts

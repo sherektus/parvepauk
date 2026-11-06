@@ -339,7 +339,24 @@ class SoundEngine {
   public playSplash() {
     const ctx = this.getContext()
     if (!ctx) return
-    const bufferSize = ctx.sampleRate * 0.35
+    const now = ctx.currentTime
+
+    // Water plunge "bloop" tone
+    const plungeOsc = ctx.createOscillator()
+    const plungeGain = ctx.createGain()
+    plungeOsc.type = 'sine'
+    plungeOsc.frequency.setValueAtTime(240, now)
+    plungeOsc.frequency.exponentialRampToValueAtTime(55, now + 0.14)
+    plungeOsc.frequency.exponentialRampToValueAtTime(190, now + 0.28)
+    plungeGain.gain.setValueAtTime(0.28, now)
+    plungeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32)
+    plungeOsc.connect(plungeGain)
+    plungeGain.connect(this.getOutputNode(ctx))
+    plungeOsc.start(now)
+    plungeOsc.stop(now + 0.34)
+
+    // Foamy water spray noise burst
+    const bufferSize = Math.floor(ctx.sampleRate * 0.55)
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
     const data = buffer.getChannelData(0)
     for (let i = 0; i < bufferSize; i++) {
@@ -348,17 +365,17 @@ class SoundEngine {
     const noise = ctx.createBufferSource()
     const filter = ctx.createBiquadFilter()
     filter.type = 'bandpass'
-    filter.frequency.setValueAtTime(900, ctx.currentTime)
-    filter.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.35)
+    filter.frequency.setValueAtTime(1200, now)
+    filter.frequency.exponentialRampToValueAtTime(280, now + 0.55)
     const gain = ctx.createGain()
-    gain.gain.setValueAtTime(0.24, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + 0.35)
+    gain.gain.setValueAtTime(0.36, now)
+    gain.gain.exponentialRampToValueAtTime(0.005, now + 0.55)
 
     noise.buffer = buffer
     noise.connect(filter)
     filter.connect(gain)
     gain.connect(this.getOutputNode(ctx))
-    noise.start()
+    noise.start(now)
   }
 
   public playWheelTick() {
