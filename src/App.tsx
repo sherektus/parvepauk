@@ -10,13 +10,26 @@ import {
   VolumeX,
   Beer,
   CupSoda,
+  Users,
 } from 'lucide-react'
-import { PLAYER_COLORS } from './data/gameContent'
+import { BRAINROT_CHARACTERS, PLAYER_COLORS } from './data/gameContent'
 import { createBrainrotAvatar } from './utils/pixelAvatar'
 import { SetupModal, type PlayerSetupConfig } from './components/SetupModal'
 import { RulesModal } from './components/RulesModal'
 import { BattleScreen, type PlayerBattleState } from './components/BattleScreen'
 import { sound } from './utils/sound'
+
+function createInitialPlayers(): PlayerSetupConfig[] {
+  return BRAINROT_CHARACTERS.map((br, idx) => ({
+    id: idx,
+    team: (idx % 2) as 0 | 1,
+    name: br.name,
+    colorId: PLAYER_COLORS[idx % PLAYER_COLORS.length].id,
+    captainAvatar: createBrainrotAvatar(br.id),
+    selectedBrainrotId: br.id,
+    hasCustomPhoto: false,
+  }))
+}
 
 export function App() {
   const [drinkSelected, setDrinkSelected] = useState<'none' | 'prompt_jobu' | 'done'>('none')
@@ -25,44 +38,27 @@ export function App() {
   const [screen, setScreen] = useState<'home' | 'setup' | 'battle' | 'gameover'>('home')
   const [showRules, setShowRules] = useState(false)
   const [muted, setMuted] = useState(() => sound.isMuted())
+  const [volume, setVolume] = useState(() => sound.getVolume())
 
-  const [players, setPlayers] = useState<[PlayerSetupConfig, PlayerSetupConfig]>(() => [
-    {
-      name: 'Tralalero Tralala',
-      colorId: PLAYER_COLORS[0].id,
-      captainAvatar: createBrainrotAvatar('tralalero'),
-      selectedBrainrotId: 'tralalero',
-      hasCustomPhoto: false,
-    },
-    {
-      name: 'Bombardiro Crocodilo',
-      colorId: PLAYER_COLORS[1].id,
-      captainAvatar: createBrainrotAvatar('bombardiro'),
-      selectedBrainrotId: 'bombardiro',
-      hasCustomPhoto: false,
-    },
-  ])
+  const [playerCount, setPlayerCount] = useState<number>(2)
+  const [players, setPlayers] = useState<PlayerSetupConfig[]>(() => createInitialPlayers())
 
   const [gameOverData, setGameOverData] = useState<{
-    winnerIdx: 0 | 1
-    finalPlayers: [PlayerBattleState, PlayerBattleState]
+    winningTeam: 0 | 1
+    finalPlayers: PlayerBattleState[]
     reason: string
   } | null>(null)
 
-  const handleUpdatePlayer = useCallback((index: 0 | 1, patch: Partial<PlayerSetupConfig>) => {
-    setPlayers((prev) => {
-      const next: [PlayerSetupConfig, PlayerSetupConfig] = [{ ...prev[0] }, { ...prev[1] }]
-      next[index] = { ...next[index], ...patch }
-      return next
-    })
+  const handleUpdatePlayer = useCallback((index: number, patch: Partial<PlayerSetupConfig>) => {
+    setPlayers((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)))
   }, [])
 
   const handleEndGame = (
-    winnerIdx: 0 | 1,
-    finalPlayers: [PlayerBattleState, PlayerBattleState],
+    winningTeam: 0 | 1,
+    finalPlayers: PlayerBattleState[],
     reason: string
   ) => {
-    setGameOverData({ winnerIdx, finalPlayers, reason })
+    setGameOverData({ winningTeam, finalPlayers, reason })
     setScreen('gameover')
   }
 
@@ -71,7 +67,9 @@ export function App() {
     setScreen('battle')
   }
 
-  // Initial Drink Selection Gate & "Kas te olete jobud?" Prompt
+  const activeSetupPlayers = players.slice(0, playerCount)
+
+  // Initial Drink Selection Gate & "Kas te olete jobid?" Prompt
   if (drinkSelected !== 'done') {
     return (
       <div className="min-h-screen w-full bg-gradient-to-b from-sky-800 via-sky-950 to-slate-950 text-white flex items-center justify-center p-6">
@@ -170,28 +168,47 @@ export function App() {
               Vaheta joogivalikut
             </button>
 
-            <button
-              onClick={() => setMuted(sound.toggleMute())}
-              className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-sky-200 font-bold text-xs pixel-btn flex items-center gap-2"
-            >
-              {muted ? (
-                <VolumeX className="w-4 h-4 text-rose-400" />
-              ) : (
-                <Volume2 className="w-4 h-4" />
-              )}
-              {muted ? 'Meremehe muusika maas' : 'Meremehe muusika sees'}
-            </button>
+            <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 pixel-box">
+              <button
+                onClick={() => setMuted(sound.toggleMute())}
+                className="text-sky-200 hover:text-amber-300 font-bold text-xs flex items-center gap-1.5"
+              >
+                {muted || volume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-amber-300" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={muted ? 0 : volume}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value)
+                  setVolume(v)
+                  sound.setVolume(v)
+                  setMuted(sound.isMuted())
+                }}
+                className="w-24 accent-amber-400 cursor-pointer"
+                title="Muusika ja helide tugevus"
+              />
+              <span className="text-[11px] font-bold text-sky-200 w-8 text-right">
+                {muted ? '0%' : `${Math.round(volume * 100)}%`}
+              </span>
+            </div>
           </div>
 
-          <div className="max-w-xl w-full mx-auto my-auto text-center space-y-6">
-            <div className="flex items-center justify-center gap-6">
+          <div className="max-w-2xl w-full mx-auto my-auto text-center space-y-6">
+            <div className="flex items-center justify-center gap-4 flex-wrap">
               <img
                 src={players[0].captainAvatar}
                 alt={players[0].name}
                 className="w-20 h-20 border-4 border-rose-500 bg-slate-900 pixelated pixel-box"
               />
               <div className="bg-amber-400 text-slate-950 font-pixel text-xs px-3 py-2 pixel-box">
-                VS
+                {playerCount === 2 ? '1 vs 1' : `${playerCount} PAATI`}
               </div>
               <img
                 src={players[1].captainAvatar}
@@ -205,11 +222,43 @@ export function App() {
                 PARVEPAUK
               </h1>
               <p className="text-sky-200 text-lg font-semibold mt-3">
-                Kahe mängijaga parveduell: Italian Brainrot & „Su ema“ eri!
+                Parveduell 2 kuni 6 mängijale: Italian Brainrot & „Su ema“ eri!
               </p>
             </div>
 
-            <div className="flex flex-col gap-3.5 max-w-sm mx-auto pt-2">
+            {/* Quick Player Count Selector on Home Screen */}
+            <div className="bg-slate-900/90 border-2 border-amber-400 p-4 max-w-lg mx-auto pixel-box space-y-2.5">
+              <div className="text-xs font-pixel text-amber-300 flex items-center justify-center gap-2">
+                <Users className="w-4 h-4" />
+                VALI MÄNGUREŽIIM (2–6 MÄNGIJAT):
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                {[2, 3, 4, 5, 6].map((cnt) => (
+                  <button
+                    key={cnt}
+                    type="button"
+                    onClick={() => {
+                      sound.playClick()
+                      setPlayerCount(cnt)
+                    }}
+                    className={`py-2 font-bold text-sm pixel-btn ${
+                      playerCount === cnt
+                        ? 'bg-amber-400 text-slate-950 scale-105'
+                        : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                    }`}
+                  >
+                    {cnt === 2 ? '2 (1v1)' : cnt === 6 ? '6 (3v3)' : `${cnt} mäng.`}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-sky-200">
+                {playerCount === 2
+                  ? 'Kahekesi: klassikaline parveduell 1 vs 1!'
+                  : `${playerCount} mängijat: igal mängijal on oma paat ja enne lasku valid pealtvaates, keda rünnata!`}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3.5 max-w-sm mx-auto pt-1">
               <button
                 onClick={() => {
                   sound.playClick()
@@ -218,7 +267,7 @@ export function App() {
                 className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-pixel text-sm pixel-btn flex items-center justify-center gap-3"
               >
                 <Play className="w-5 h-5 fill-current" />
-                Alusta mängu
+                Alusta mängu ({playerCount} mängijat)
               </button>
 
               <button
@@ -229,7 +278,7 @@ export function App() {
                 className="w-full py-4 bg-amber-400 hover:bg-amber-300 text-slate-950 font-pixel text-sm pixel-btn flex items-center justify-center gap-3"
               >
                 <UserPlus className="w-5 h-5" />
-                Tegelase lisamine
+                Tegelase ja paatide valik
               </button>
 
               <button
@@ -246,13 +295,15 @@ export function App() {
           </div>
 
           <div className="text-center text-xs text-sky-300/80 font-semibold">
-            Vali Italian Brainrot kapten või tee pilt arvuti kaameraga • „Su ema“ naljad • Meremehe taustamuusika
+            2–6 mängijat • Pealtvaates sihtmärgi valik • Italian Brainrot kaptenid & veebikaamera
           </div>
         </div>
       )}
 
       {screen === 'setup' && (
         <SetupModal
+          playerCount={playerCount}
+          onChangePlayerCount={setPlayerCount}
           players={players}
           onUpdatePlayer={handleUpdatePlayer}
           onBack={() => setScreen('home')}
@@ -262,7 +313,7 @@ export function App() {
 
       {screen === 'battle' && (
         <BattleScreen
-          setupPlayers={players}
+          setupPlayers={activeSetupPlayers}
           onOpenRules={() => setShowRules(true)}
           onEndGame={handleEndGame}
           onRestartToHome={() => setScreen('home')}
@@ -271,33 +322,38 @@ export function App() {
 
       {screen === 'gameover' && gameOverData && (
         <div className="min-h-screen w-full bg-gradient-to-b from-sky-900 via-sky-950 to-slate-950 flex items-center justify-center p-6">
-          <div className="max-w-lg w-full bg-slate-900 border-4 border-amber-400 p-6 pixel-box text-center space-y-5">
+          <div className="max-w-2xl w-full bg-slate-900 border-4 border-amber-400 p-6 pixel-box text-center space-y-5">
             <Trophy className="w-14 h-14 text-amber-300 mx-auto" />
             <div>
               <div className="font-pixel text-xs text-sky-300 mb-1">VÕITJA ON SELGUNUD!</div>
               <h1 className="font-pixel text-xl text-amber-300">
-                {gameOverData.finalPlayers[gameOverData.winnerIdx].name} VÕITIS!
+                {gameOverData.finalPlayers.length === 2
+                  ? `${
+                      gameOverData.finalPlayers.find(
+                        (p) => p.team === gameOverData.winningTeam
+                      )?.name
+                    } VÕITIS!`
+                  : `TIIM ${gameOverData.winningTeam + 1} VÕITIS MERELAHINGU!`}
               </h1>
               <p className="text-slate-200 font-semibold text-base mt-2">{gameOverData.reason}</p>
             </div>
 
-            <div className="flex justify-center">
-              <img
-                src={gameOverData.finalPlayers[gameOverData.winnerIdx].captainAvatar}
-                alt="Võitja kapten"
-                className="w-28 h-28 border-4 border-amber-400 pixelated bg-slate-950"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 border-2 border-slate-800 text-sm">
-              {([0, 1] as const).map((i) => {
-                const fp = gameOverData.finalPlayers[i]
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-950 p-3 border-2 border-slate-800 text-sm">
+              {gameOverData.finalPlayers.map((fp) => {
                 const alive = fp.crew.filter((c) => !c.inWater).length
                 return (
-                  <div key={i} className="space-y-1">
-                    <div className="font-bold text-amber-300">{fp.name}</div>
-                    <div className="text-xs text-slate-300">
-                      Kapteni elud: {fp.captainLives}/5 • Madrused: {alive}/6
+                  <div
+                    key={fp.id}
+                    className="p-2 bg-slate-900 border border-slate-800 space-y-1 flex flex-col items-center"
+                  >
+                    <img
+                      src={fp.captainAvatar}
+                      alt={fp.name}
+                      className="w-12 h-12 pixelated border border-amber-400"
+                    />
+                    <div className="font-bold text-amber-300 truncate max-w-full">{fp.name}</div>
+                    <div className="text-[11px] text-slate-300">
+                      Elud: {fp.captainLives}/5 • Madrused: {alive}/6
                     </div>
                     <div className="text-xs text-sky-300 font-semibold">
                       Kokku lonkse: {fp.totalSipsTaken}

@@ -39,7 +39,9 @@ const SHANTY_BASS: number[] = [
 
 class SoundEngine {
   private ctx: AudioContext | null = null
+  private masterGain: GainNode | null = null
   private muted: boolean = false
+  private volume: number = 0.7
   private bgmStarted: boolean = false
   private stepIdx: number = 0
   private bassIdx: number = 0
@@ -49,6 +51,13 @@ class SoundEngine {
     const saved = localStorage.getItem('parvepauk_muted')
     if (saved === 'true') {
       this.muted = true
+    }
+    const savedVol = localStorage.getItem('parvepauk_volume')
+    if (savedVol !== null) {
+      const parsed = parseFloat(savedVol)
+      if (!Number.isNaN(parsed)) {
+        this.volume = Math.max(0, Math.min(1, parsed))
+      }
     }
 
     if (typeof window !== 'undefined') {
@@ -61,19 +70,49 @@ class SoundEngine {
   }
 
   private getContext(): AudioContext | null {
-    if (this.muted) return null
+    if (this.muted || this.volume <= 0) return null
     if (!this.ctx && typeof window !== 'undefined') {
       const AudioCtx =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       if (AudioCtx) {
         this.ctx = new AudioCtx()
+        this.masterGain = this.ctx.createGain()
+        this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime)
+        this.masterGain.connect(this.ctx.destination)
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {})
     }
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.muted ? 0 : this.volume, this.ctx.currentTime)
+    }
     return this.ctx
+  }
+
+  private getOutputNode(ctx: AudioContext): AudioNode {
+    return this.masterGain || ctx.destination
+  }
+
+  public getVolume(): number {
+    return this.volume
+  }
+
+  public setVolume(val: number) {
+    this.volume = Math.max(0, Math.min(1, val))
+    localStorage.setItem('parvepauk_volume', String(this.volume))
+    if (this.volume > 0 && this.muted) {
+      this.muted = false
+      localStorage.setItem('parvepauk_muted', 'false')
+    }
+    if (this.ctx && this.masterGain) {
+      this.masterGain.gain.setValueAtTime(
+        this.muted ? 0 : this.volume,
+        this.ctx.currentTime
+      )
+    }
+    this.startBackgroundMusic()
   }
 
   public startBackgroundMusic() {
@@ -103,7 +142,7 @@ class SoundEngine {
         bGain.gain.setValueAtTime(0.065, now)
         bGain.gain.exponentialRampToValueAtTime(0.002, now + 0.28)
         bOsc.connect(bGain)
-        bGain.connect(ctx.destination)
+        bGain.connect(this.getOutputNode(ctx))
         bOsc.start(now)
         bOsc.stop(now + 0.3)
 
@@ -117,7 +156,7 @@ class SoundEngine {
           kGain.gain.setValueAtTime(0.08, now)
           kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11)
           kick.connect(kGain)
-          kGain.connect(ctx.destination)
+          kGain.connect(this.getOutputNode(ctx))
           kick.start(now)
           kick.stop(now + 0.12)
         }
@@ -150,7 +189,7 @@ class SoundEngine {
 
         osc1.connect(gain)
         osc2.connect(gain)
-        gain.connect(ctx.destination)
+        gain.connect(this.getOutputNode(ctx))
 
         osc1.start(now)
         osc2.start(now)
@@ -186,7 +225,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.08, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06)
     osc.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(this.getOutputNode(ctx))
     osc.start()
     osc.stop(ctx.currentTime + 0.065)
   }
@@ -203,7 +242,7 @@ class SoundEngine {
     oscGain.gain.setValueAtTime(0.32, ctx.currentTime)
     oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38)
     osc.connect(oscGain)
-    oscGain.connect(ctx.destination)
+    oscGain.connect(this.getOutputNode(ctx))
     osc.start()
     osc.stop(ctx.currentTime + 0.4)
 
@@ -219,7 +258,7 @@ class SoundEngine {
     noiseGain.gain.setValueAtTime(0.22, ctx.currentTime)
     noiseGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25)
     noise.connect(noiseGain)
-    noiseGain.connect(ctx.destination)
+    noiseGain.connect(this.getOutputNode(ctx))
     noise.start()
   }
 
@@ -235,7 +274,7 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.18, ctx.currentTime + i * 0.05)
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.05 + 0.1)
       osc.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(this.getOutputNode(ctx))
       osc.start(ctx.currentTime + i * 0.05)
       osc.stop(ctx.currentTime + i * 0.05 + 0.11)
     })
@@ -253,7 +292,7 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.16, ctx.currentTime + i * 0.04)
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.04 + 0.12)
       osc.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(this.getOutputNode(ctx))
       osc.start(ctx.currentTime + i * 0.04)
       osc.stop(ctx.currentTime + i * 0.04 + 0.13)
     })
@@ -280,7 +319,7 @@ class SoundEngine {
     noise.buffer = buffer
     noise.connect(filter)
     filter.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(this.getOutputNode(ctx))
     noise.start()
   }
 
@@ -294,7 +333,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.06, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03)
     osc.connect(gain)
-    gain.connect(ctx.destination)
+    gain.connect(this.getOutputNode(ctx))
     osc.start()
     osc.stop(ctx.currentTime + 0.035)
   }
@@ -312,7 +351,7 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.16, start)
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.09)
       osc.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(this.getOutputNode(ctx))
       osc.start(start)
       osc.stop(start + 0.1)
     })
@@ -332,7 +371,7 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.14, start)
       gain.gain.exponentialRampToValueAtTime(0.001, start + dur)
       osc.connect(gain)
-      gain.connect(ctx.destination)
+      gain.connect(this.getOutputNode(ctx))
       osc.start(start)
       osc.stop(start + dur + 0.02)
     })

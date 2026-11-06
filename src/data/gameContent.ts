@@ -157,6 +157,14 @@ export const PLAYER_COLORS: PlayerColorOption[] = [
     flag: '#a78bfa',
     text: '#ddd6fe',
   },
+  {
+    id: 'pink',
+    name: 'Flamingo Roosa',
+    primary: '#ec4899',
+    secondary: '#9d174d',
+    flag: '#f472b6',
+    text: '#fbcfe8',
+  },
 ];
 
 export const WHEEL_OUTCOMES: WheelOutcome[] = [
@@ -175,7 +183,7 @@ export const WHEEL_OUTCOMES: WheelOutcome[] = [
   {
     id: 'wind_reverse',
     title: 'Tuulepööre',
-    shortDesc: 'Järgmise lasu tuule suund muutub!',
+    shortDesc: 'Järgmise lasu tuul pöördub ja sihtimine on tagurpidi (inverted)!',
     color: '#06b6d4',
   },
   {

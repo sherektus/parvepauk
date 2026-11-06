@@ -11,6 +11,9 @@ import {
   Play,
   MessageSquareWarning,
   Flame,
+  Crosshair,
+  Skull,
+  Compass,
 } from 'lucide-react'
 import {
   BRAINROT_CHARACTERS,
@@ -41,6 +44,8 @@ export interface CrewUnit {
 }
 
 export interface PlayerBattleState {
+  id: number
+  team: 0 | 1
   name: string
   colorId: string
   captainAvatar: string
@@ -65,7 +70,7 @@ interface Projectile {
   y: number
   vx: number
   vy: number
-  shooterIdx: 0 | 1
+  shooterSide: 0 | 1
   sabotageChecked: boolean
   isUltra: boolean
   trail: { x: number; y: number }[]
@@ -93,17 +98,17 @@ interface FloatingBanner {
 interface MidFlightSabotage {
   charName: string
   charId: BrainrotId
-  targetIdx: 0 | 1
+  targetSide: 0 | 1
   pushTargetOffset: number
   timer: number
 }
 
 interface BattleScreenProps {
-  setupPlayers: [PlayerSetupConfig, PlayerSetupConfig]
+  setupPlayers: PlayerSetupConfig[]
   onOpenRules: () => void
   onEndGame: (
-    winnerIdx: 0 | 1,
-    finalPlayers: [PlayerBattleState, PlayerBattleState],
+    winningTeam: 0 | 1,
+    finalPlayers: PlayerBattleState[],
     reason: string
   ) => void
   onRestartToHome: () => void
@@ -132,6 +137,12 @@ function createInitialCrew(primaryColor: string, secondaryColor: string): CrewUn
   }))
 }
 
+export function isBoatEliminated(p: PlayerBattleState): boolean {
+  if (p.captainLives <= 0) return true
+  const aliveCrew = p.crew.filter((c) => !c.inWater).length
+  return aliveCrew === 0
+}
+
 function getRandomYoMamaJoke(exclude?: string): string {
   const pool = YO_MAMA_JOKES.filter((j) => j !== exclude)
   return pool[Math.floor(Math.random() * pool.length)] || YO_MAMA_JOKES[0]
@@ -141,10 +152,6 @@ function randomWind(): number {
   return Number(((Math.random() - 0.5) * 0.22).toFixed(3))
 }
 
-/**
- * Generates dynamic, constantly changing sip bet options for every turn,
- * including a wild ULTRA ALL IN option and varying boat distances!
- */
 function rollTurnBetOptions(): [BetOption, BetOption, BetOption] {
   const lowSips = Math.random() < 0.65 ? 1 : 2
   const midSips = lowSips === 1 ? (Math.random() < 0.5 ? 2 : 3) : Math.random() < 0.5 ? 3 : 4
@@ -188,45 +195,48 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   onEndGame,
   onRestartToHome,
 }) => {
-  const [players, setPlayers] = useState<[PlayerBattleState, PlayerBattleState]>(() => {
-    const c0 = PLAYER_COLORS.find((c) => c.id === setupPlayers[0].colorId) || PLAYER_COLORS[0]
-    const c1 = PLAYER_COLORS.find((c) => c.id === setupPlayers[1].colorId) || PLAYER_COLORS[1]
-    return [
-      {
-        name: setupPlayers[0].name.trim() || 'Tralalero Tralala',
-        colorId: setupPlayers[0].colorId,
-        captainAvatar: setupPlayers[0].captainAvatar,
+  const isMultiBoatMode = setupPlayers.length > 2
+
+  const [players, setPlayers] = useState<PlayerBattleState[]>(() =>
+    setupPlayers.map((sp, i) => {
+      const col =
+        PLAYER_COLORS.find((c) => c.id === sp.colorId) ||
+        PLAYER_COLORS[i % PLAYER_COLORS.length]
+      return {
+        id: sp.id,
+        team: sp.team,
+        name: sp.name.trim() || `Kapten ${i + 1}`,
+        colorId: sp.colorId,
+        captainAvatar: sp.captainAvatar,
         captainLives: 5,
         hasShield: false,
         skipNextTurn: false,
-        crew: createInitialCrew(c0.primary, c0.secondary),
+        crew: createInitialCrew(col.primary, col.secondary),
         totalSipsTaken: 0,
-      },
-      {
-        name: setupPlayers[1].name.trim() || 'Bombardiro Crocodilo',
-        colorId: setupPlayers[1].colorId,
-        captainAvatar: setupPlayers[1].captainAvatar,
-        captainLives: 5,
-        hasShield: false,
-        skipNextTurn: false,
-        crew: createInitialCrew(c1.primary, c1.secondary),
-        totalSipsTaken: 0,
-      },
-    ]
+      }
+    })
+  )
+
+  const [activeIdx, setActiveIdx] = useState<number>(0)
+  const [targetIdx, setTargetIdx] = useState<number>(() => {
+    const firstEnemy = setupPlayers.findIndex((p) => p.team !== setupPlayers[0].team)
+    return firstEnemy >= 0 ? firstEnemy : 1
   })
 
-  const [activeIdx, setActiveIdx] = useState<0 | 1>(0)
   const [phase, setPhase] = useState<
-    'betting' | 'aiming' | 'firing' | 'wheel' | 'brainrot_event' | 'bonus_summary'
-  >('betting')
+    'select_target' | 'betting' | 'aiming' | 'firing' | 'wheel' | 'brainrot_event' | 'bonus_summary'
+  >(() => (isMultiBoatMode ? 'select_target' : 'betting'))
+
   const [betOptions, setBetOptions] = useState<[BetOption, BetOption, BetOption]>(() =>
     rollTurnBetOptions()
   )
   const [selectedBetIdx, setSelectedBetIdx] = useState<0 | 1 | 2>(0)
   const [isBonusShot, setIsBonusShot] = useState(false)
+  const [isAimInverted, setIsAimInverted] = useState(false)
   const [wind, setWind] = useState<number>(() => randomWind())
   const [paused, setPaused] = useState(false)
   const [muted, setMuted] = useState(() => sound.isMuted())
+  const [volume, setVolume] = useState(() => sound.getVolume())
   const [currentJoke, setCurrentJoke] = useState<string>(() => getRandomYoMamaJoke())
   const [activeBrainrot, setActiveBrainrot] = useState<{
     char: BrainrotCharacter
@@ -244,6 +254,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const selectedBetSips = currentBetOption.sips
   const isUltraAllIn = currentBetOption.id === 'ultra'
 
+  const activePlayer = players[activeIdx] || players[0]
+  const opponentPlayer = players[targetIdx] || players[1] || players[0]
+
+  // In the side-view duel, Team 0 is always positioned on the left (side 0) and Team 1 on the right (side 1)
+  const leftPlayerIdx = activePlayer.team === 0 ? activeIdx : targetIdx
+  const rightPlayerIdx = activePlayer.team === 1 ? activeIdx : targetIdx
+  const shooterSide: 0 | 1 = activePlayer.team
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const playersRef = useRef(players)
   playersRef.current = players
@@ -254,6 +272,18 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const activeIdxRef = useRef(activeIdx)
   activeIdxRef.current = activeIdx
 
+  const targetIdxRef = useRef(targetIdx)
+  targetIdxRef.current = targetIdx
+
+  const leftPlayerIdxRef = useRef(leftPlayerIdx)
+  leftPlayerIdxRef.current = leftPlayerIdx
+
+  const rightPlayerIdxRef = useRef(rightPlayerIdx)
+  rightPlayerIdxRef.current = rightPlayerIdx
+
+  const shooterSideRef = useRef<0 | 1>(shooterSide)
+  shooterSideRef.current = shooterSide
+
   const windRef = useRef(wind)
   windRef.current = wind
 
@@ -263,7 +293,6 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const currentBetRef = useRef<BetOption>(currentBetOption)
   currentBetRef.current = currentBetOption
 
-  // Smoothly animated base raft centers that shift when bet size changes!
   const animatedRaftBaseXRef = useRef<[number, number]>([
     currentBetOption.raftLeftX,
     currentBetOption.raftRightX,
@@ -276,7 +305,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const particlesRef = useRef<Particle[]>([])
   const bannersRef = useRef<FloatingBanner[]>([])
   const captainShakeRef = useRef<[number, number]>([0, 0])
-  const captainImagesRef = useRef<[HTMLImageElement | null, HTMLImageElement | null]>([null, null])
+  const captainImagesMapRef = useRef<Record<number, HTMLImageElement>>({})
   const brainrotSpritesRef = useRef<Record<string, HTMLImageElement>>({})
 
   const raftBlowOffsetRef = useRef<[number, number]>([0, 0])
@@ -284,14 +313,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const midFlightSabotageRef = useRef<MidFlightSabotage | null>(null)
 
   useEffect(() => {
-    ;([0, 1] as const).forEach((idx) => {
+    players.forEach((p, idx) => {
       const img = new Image()
-      img.src = setupPlayers[idx].captainAvatar
+      img.src = p.captainAvatar
       img.onload = () => {
-        captainImagesRef.current[idx] = img
+        captainImagesMapRef.current[idx] = img
       }
     })
-  }, [setupPlayers])
+  }, [players])
 
   useEffect(() => {
     BRAINROT_CHARACTERS.forEach((b) => {
@@ -303,18 +332,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     })
   }, [])
 
-  useEffect(() => {
-    setPlayers((prev) => [
-      { ...prev[0], captainAvatar: setupPlayers[0].captainAvatar },
-      { ...prev[1], captainAvatar: setupPlayers[1].captainAvatar },
-    ])
-  }, [setupPlayers])
-
-  const getCurrentRaftX = (playerIdx: 0 | 1) => {
+  const getCurrentRaftX = (side: 0 | 1) => {
     return (
-      animatedRaftBaseXRef.current[playerIdx] +
-      raftWaveSwayRef.current[playerIdx] +
-      raftBlowOffsetRef.current[playerIdx]
+      animatedRaftBaseXRef.current[side] +
+      raftWaveSwayRef.current[side] +
+      raftBlowOffsetRef.current[side]
     )
   }
 
@@ -357,9 +379,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     bannersRef.current.push({ x, y, text, color, life: 85 })
   }
 
-  const getCannonOrigin = (playerIdx: 0 | 1) => {
-    const cx = getCurrentRaftX(playerIdx)
-    const dir = playerIdx === 0 ? 1 : -1
+  const getCannonOrigin = (side: 0 | 1) => {
+    const cx = getCurrentRaftX(side)
+    const dir = side === 0 ? 1 : -1
     return {
       x: cx + dir * 28,
       y: WATER_Y - 46,
@@ -374,27 +396,40 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     const mx = (e.clientX - rect.left) * scaleX
     const my = (e.clientY - rect.top) * scaleY
 
-    const origin = getCannonOrigin(activeIdx)
+    const origin = getCannonOrigin(shooterSide)
     const dx = mx - origin.x
     const dy = my - origin.y
 
     let angle = Math.atan2(dy, dx)
-    if (activeIdx === 0) {
+    if (shooterSide === 0) {
       angle = Math.max(-1.42, Math.min(-0.12, angle))
+      if (isAimInverted) {
+        // Invert angle between -1.42 and -0.12
+        angle = -1.42 + (-0.12 - angle)
+      }
     } else {
       if (angle > 0) angle = -Math.PI + 0.12
       angle = Math.max(-Math.PI + 0.12, Math.min(-1.72, angle))
+      if (isAimInverted) {
+        // Invert angle between (-Math.PI + 0.12) and -1.72
+        const minA = -Math.PI + 0.12
+        const maxA = -1.72
+        angle = minA + (maxA - angle)
+      }
     }
 
     const dist = Math.hypot(dx, dy)
-    const power = Math.max(8.0, Math.min(20.5, dist / 23))
+    let power = Math.max(8.0, Math.min(20.5, dist / 23))
+    if (isAimInverted) {
+      // Invert power between 8.0 and 20.5
+      power = 8.0 + (20.5 - power)
+    }
     mouseAimRef.current = { angle, power }
   }
 
   const handleFireShot = () => {
     if (phase !== 'aiming' || paused) return
-    const origin = getCannonOrigin(activeIdx)
-    // Use effectiveAimRef which includes the difficulty sway when betting 2+ lonksu!
+    const origin = getCannonOrigin(shooterSide)
     const { angle, power } = effectiveAimRef.current
 
     sound.playCannonFire()
@@ -405,7 +440,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       y: origin.y + Math.sin(angle) * 28,
       vx: Math.cos(angle) * power,
       vy: Math.sin(angle) * power,
-      shooterIdx: activeIdx,
+      shooterSide,
       sabotageChecked: false,
       isUltra: currentBetRef.current.id === 'ultra',
       trail: [],
@@ -413,26 +448,31 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     setPhase('firing')
   }
 
-  const checkWinConditions = (currentPlayers: [PlayerBattleState, PlayerBattleState]): boolean => {
-    for (const idx of [0, 1] as const) {
-      const p = currentPlayers[idx]
-      const aliveCrew = p.crew.filter((c) => !c.inWater).length
-      if (p.captainLives <= 0) {
-        sound.playWinFanfare()
-        const winner = (idx === 0 ? 1 : 0) as 0 | 1
-        onEndGame(winner, currentPlayers, `${p.name} kaotas kõik 5 kapteni elu!`)
-        return true
-      }
-      if (aliveCrew === 0) {
-        sound.playWinFanfare()
-        const winner = (idx === 0 ? 1 : 0) as 0 | 1
-        onEndGame(
-          winner,
-          currentPlayers,
-          `Kõik 6 mängija ${p.name} meeskonnaliiget lükati parvelt vette!`
-        )
-        return true
-      }
+  const checkWinConditions = (currentPlayers: PlayerBattleState[]): boolean => {
+    const team0Alive = currentPlayers.some((p) => p.team === 0 && !isBoatEliminated(p))
+    const team1Alive = currentPlayers.some((p) => p.team === 1 && !isBoatEliminated(p))
+
+    if (!team0Alive) {
+      sound.playWinFanfare()
+      onEndGame(
+        1,
+        currentPlayers,
+        isMultiBoatMode
+          ? 'Kõik 1. tiimi paadid on põhja lastud!'
+          : `${currentPlayers[0].name} kaotas oma paadi!`
+      )
+      return true
+    }
+    if (!team1Alive) {
+      sound.playWinFanfare()
+      onEndGame(
+        0,
+        currentPlayers,
+        isMultiBoatMode
+          ? 'Kõik 2. tiimi paadid on põhja lastud!'
+          : `${currentPlayers[1].name} kaotas oma paadi!`
+      )
+      return true
     }
     return false
   }
@@ -443,13 +483,29 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     let tick = 0
 
     const resolveShotEnd = (hit: boolean, shieldBlocked: boolean, summaryText: string) => {
+      // Ensure any still-airborne hit crew members are finalized as inWater so the HUD count always matches!
+      let finalizedAny = false
+      const finalizedPlayers = playersRef.current.map((p) => ({
+        ...p,
+        crew: p.crew.map((c) => {
+          if (c.airborne && !c.inWater) {
+            finalizedAny = true
+            return { ...c, airborne: false, inWater: true }
+          }
+          return c
+        }),
+      }))
+      if (finalizedAny) {
+        playersRef.current = finalizedPlayers
+        setPlayers(finalizedPlayers)
+      }
+
       if (checkWinConditions(playersRef.current)) return
 
       setLastShotResult({ hit, shieldBlocked, summaryText })
       if (isBonusShot) {
         setPhase('bonus_summary')
       } else if (Math.random() < 0.33) {
-        // ~1/3 chance for Risk Wheel to appear
         setPhase('wheel')
       } else {
         setPhase('bonus_summary')
@@ -458,11 +514,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
     const stepPhysics = () => {
       tick++
-      if (pausedRef.current) return
+      if (pausedRef.current || phaseRef.current === 'select_target') return
 
       const betOpt = currentBetRef.current
 
-      // Smoothly move rafts toward the selected bet's distance!
       animatedRaftBaseXRef.current = [
         animatedRaftBaseXRef.current[0] +
           (betOpt.raftLeftX - animatedRaftBaseXRef.current[0]) * 0.12,
@@ -470,14 +525,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           (betOpt.raftRightX - animatedRaftBaseXRef.current[1]) * 0.12,
       ]
 
-      // Wave drift & aiming difficulty sway scale with bet sips!
       const difficultyMult = betOpt.id === 'ultra' ? 1.85 : betOpt.sips >= 2 ? 1.45 : 1.0
       raftWaveSwayRef.current = [
         Math.sin(tick * 0.036 * difficultyMult) * (30 * difficultyMult),
         Math.cos(tick * 0.04 * difficultyMult + 1.2) * (30 * difficultyMult),
       ]
 
-      // When betting 2+ lonksu or ULTRA ALL IN, add cannon aiming sway so aiming is harder!
       if (betOpt.sips >= 2) {
         const angleWobbleAmp = betOpt.id === 'ultra' ? 0.14 : 0.075
         const powerWobbleAmp = betOpt.id === 'ultra' ? 1.8 : 0.95
@@ -494,12 +547,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       if (midFlightSabotageRef.current) {
         const sab = midFlightSabotageRef.current
         sab.timer--
-        const currentOff = raftBlowOffsetRef.current[sab.targetIdx]
-        raftBlowOffsetRef.current[sab.targetIdx] =
+        const currentOff = raftBlowOffsetRef.current[sab.targetSide]
+        raftBlowOffsetRef.current[sab.targetSide] =
           currentOff + (sab.pushTargetOffset - currentOff) * 0.16
 
         if (tick % 2 === 0 && sab.timer > 15) {
-          const raftX = getCurrentRaftX(sab.targetIdx)
+          const raftX = getCurrentRaftX(sab.targetSide)
           particlesRef.current.push({
             x: raftX + (sab.pushTargetOffset > 0 ? -130 : 130),
             y: WATER_Y - 60 - Math.random() * 50,
@@ -539,15 +592,16 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         proj.vx += windRef.current * 0.085
         proj.vy += GRAVITY
 
-        const targetIdx: 0 | 1 = proj.shooterIdx === 0 ? 1 : 0
-        const targetCenter = getCurrentRaftX(targetIdx)
-        const targetPlayer = playersRef.current[targetIdx]
+        const targetSide: 0 | 1 = proj.shooterSide === 0 ? 1 : 0
+        const targetPlayerIdx = targetIdxRef.current
+        const targetCenter = getCurrentRaftX(targetSide)
+        const targetPlayer = playersRef.current[targetPlayerIdx]
 
-        // Mid-flight Brainrot boat-blow sabotage!
+        // Mid-flight Brainrot boat-blow sabotage
         if (
           !proj.sabotageChecked &&
-          ((proj.shooterIdx === 0 && proj.x > CANVAS_W * 0.46) ||
-            (proj.shooterIdx === 1 && proj.x < CANVAS_W * 0.54))
+          ((proj.shooterSide === 0 && proj.x > CANVAS_W * 0.46) ||
+            (proj.shooterSide === 1 && proj.x < CANVAS_W * 0.54))
         ) {
           proj.sabotageChecked = true
           const distToTargetX = Math.abs(targetCenter - proj.x)
@@ -568,7 +622,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             midFlightSabotageRef.current = {
               charName: randChar.name,
               charId: randChar.id,
-              targetIdx,
+              targetSide,
               pushTargetOffset: pushAmount,
               timer: 85,
             }
@@ -591,11 +645,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           addBanner(targetCenter, WATER_Y - 150, 'KILP BLOKEERIS!', '#60a5fa')
           projectileRef.current = null
 
-          const updated: [PlayerBattleState, PlayerBattleState] = [
-            { ...playersRef.current[0] },
-            { ...playersRef.current[1] },
-          ]
-          updated[targetIdx].hasShield = false
+          const updated = playersRef.current.map((p, i) =>
+            i === targetPlayerIdx ? { ...p, hasShield: false } : p
+          )
           playersRef.current = updated
           setPlayers(updated)
 
@@ -611,24 +663,18 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         if (Math.hypot(proj.x - capX, proj.y - capY) < 28) {
           sound.playHit()
           spawnExplosion(proj.x, proj.y, proj.isUltra ? 45 : 28)
-          captainShakeRef.current[targetIdx] = 32
+          captainShakeRef.current[targetSide] = 32
 
           const reaction =
             CAPTAIN_HIT_REACTIONS[Math.floor(Math.random() * CAPTAIN_HIT_REACTIONS.length)]
           const dmg = proj.isUltra ? 2 : 1
-          addBanner(
-            capX,
-            capY - 54,
-            `KAPTEN PIHTAS (-${dmg} ELU)! "${reaction}"`,
-            '#f87171'
+          addBanner(capX, capY - 54, `KAPTEN PIHTAS (-${dmg} ELU)! "${reaction}"`, '#f87171')
+
+          const updated = playersRef.current.map((p, i) =>
+            i === targetPlayerIdx
+              ? { ...p, captainLives: Math.max(0, p.captainLives - dmg) }
+              : p
           )
-
-          const updated: [PlayerBattleState, PlayerBattleState] = [
-            { ...playersRef.current[0], crew: playersRef.current[0].crew.map((c) => ({ ...c })) },
-            { ...playersRef.current[1], crew: playersRef.current[1].crew.map((c) => ({ ...c })) },
-          ]
-          updated[targetIdx].captainLives = Math.max(0, updated[targetIdx].captainLives - dmg)
-
           playersRef.current = updated
           setPlayers(updated)
           projectileRef.current = null
@@ -645,16 +691,16 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         const nearDeckY = proj.y >= deckY - 38 && proj.y <= WATER_Y + 6
 
         if (inRaftX && nearDeckY) {
-          const updated: [PlayerBattleState, PlayerBattleState] = [
-            { ...playersRef.current[0], crew: playersRef.current[0].crew.map((c) => ({ ...c })) },
-            { ...playersRef.current[1], crew: playersRef.current[1].crew.map((c) => ({ ...c })) },
-          ]
+          const updated = playersRef.current.map((p) => ({
+            ...p,
+            crew: p.crew.map((c) => ({ ...c })),
+          }))
 
           let hitCount = 0
           const impactRelX = proj.x - targetCenter
           const blastRadius = proj.isUltra ? 62 : 40
 
-          updated[targetIdx].crew.forEach((c) => {
+          updated[targetPlayerIdx].crew.forEach((c) => {
             if (c.inWater) return
             const dist = Math.abs(c.relX - impactRelX)
             if (dist < blastRadius) {
@@ -727,16 +773,18 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         }
       }
 
-      // Update airborne crew members
+      // Update airborne crew members on both visible duel boats
       let crewChanged = false
-      const nextPlayers: [PlayerBattleState, PlayerBattleState] = [
-        { ...playersRef.current[0], crew: playersRef.current[0].crew.map((c) => ({ ...c })) },
-        { ...playersRef.current[1], crew: playersRef.current[1].crew.map((c) => ({ ...c })) },
-      ]
+      const nextPlayers = playersRef.current.map((p) => ({
+        ...p,
+        crew: p.crew.map((c) => ({ ...c })),
+      }))
 
-      ;([0, 1] as const).forEach((pIdx) => {
-        const raftX = getCurrentRaftX(pIdx)
-        nextPlayers[pIdx].crew.forEach((c) => {
+      const duelIndices: [number, number] = [leftPlayerIdxRef.current, rightPlayerIdxRef.current]
+      ;([0, 1] as const).forEach((side) => {
+        const pIndex = duelIndices[side]
+        const raftX = getCurrentRaftX(side)
+        nextPlayers[pIndex]?.crew.forEach((c) => {
           if (!c.airborne || c.inWater) return
           crewChanged = true
           c.relX += c.vx
@@ -744,19 +792,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           c.vy += GRAVITY * 1.15
 
           if (c.relY >= 0) {
-            if (Math.abs(c.relX) > RAFT_HALF_WIDTH - 12 || Math.abs(c.vx) > 5.0) {
-              c.inWater = true
-              c.airborne = false
-              sound.playSplash()
-              const worldX = raftX + c.relX
-              spawnSplash(worldX, WATER_Y, '#e0f2fe', 20)
-              addBanner(worldX, WATER_Y - 32, `${c.name} VETTE!`, '#38bdf8')
-            } else {
-              c.relY = 0
-              c.vx = 0
-              c.vy = 0
-              c.airborne = false
-            }
+            // Every hit crew member splashes into the water when landing!
+            c.inWater = true
+            c.airborne = false
+            sound.playSplash()
+            const worldX = raftX + c.relX
+            spawnSplash(worldX, WATER_Y, '#e0f2fe', 20)
+            addBanner(worldX, WATER_Y - 32, `${c.name} VETTE!`, '#38bdf8')
           }
         })
       })
@@ -816,8 +858,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       if (midFlightSabotageRef.current) {
         const sab = midFlightSabotageRef.current
         const spr = brainrotSpritesRef.current[sab.charId]
-        const raftX = getCurrentRaftX(sab.targetIdx)
-        const sabX = sab.targetIdx === 1 ? raftX - 210 : raftX + 130
+        const raftX = getCurrentRaftX(sab.targetSide)
+        const sabX = sab.targetSide === 1 ? raftX - 210 : raftX + 130
         const sabY = WATER_Y - 135 + Math.sin(tick * 0.25) * 8
 
         ctx.fillStyle = '#fbbf24'
@@ -826,21 +868,26 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           ctx.drawImage(spr, sabX, sabY, 80, 80)
         }
         ctx.fillStyle = '#e0f2fe'
-        const puffDir = sab.targetIdx === 1 ? 1 : -1
+        const puffDir = sab.targetSide === 1 ? 1 : -1
         for (let p = 0; p < 3; p++) {
           ctx.fillRect(sabX + (puffDir > 0 ? 86 : -42), sabY + 20 + p * 18, 36, 5)
         }
       }
 
-      // Draw Both Rafts, Captains & Crew
-      ;([0, 1] as const).forEach((pIdx) => {
-        const p = playersRef.current[pIdx]
-        const colorObj = PLAYER_COLORS.find((c) => c.id === p.colorId) || PLAYER_COLORS[pIdx]
-        const cx = Math.round(getCurrentRaftX(pIdx))
-        const bobY = Math.round(Math.sin(tick * 0.05 + pIdx * 1.8) * 5)
+      // Draw the two dueling boats (Left = Team 0 boat, Right = Team 1 boat)
+      const duelIndices: [number, number] = [leftPlayerIdxRef.current, rightPlayerIdxRef.current]
+      ;([0, 1] as const).forEach((side) => {
+        const pIndex = duelIndices[side]
+        const p = playersRef.current[pIndex]
+        if (!p) return
+        const colorObj =
+          PLAYER_COLORS.find((c) => c.id === p.colorId) ||
+          PLAYER_COLORS[pIndex % PLAYER_COLORS.length]
+        const cx = Math.round(getCurrentRaftX(side))
+        const bobY = Math.round(Math.sin(tick * 0.05 + side * 1.8) * 5)
         const baseDeckY = WATER_Y - 26 + bobY
 
-        if (activeIdxRef.current === pIdx && phaseRef.current !== 'firing') {
+        if (shooterSideRef.current === side && phaseRef.current !== 'firing') {
           const arrowBob = Math.round(Math.sin(tick * 0.12) * 6)
           ctx.fillStyle = '#fbbf24'
           ctx.fillRect(cx - 10, baseDeckY - 180 + arrowBob, 20, 16)
@@ -878,7 +925,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         ctx.fillStyle = colorObj.secondary
         ctx.fillRect(cx - 42, baseDeckY - 48, 84, 7)
 
-        const poleX = pIdx === 0 ? cx - 34 : cx + 30
+        const poleX = side === 0 ? cx - 34 : cx + 30
         ctx.fillStyle = '#d6d3d1'
         ctx.fillRect(poleX, baseDeckY - 134, 4, 88)
         ctx.fillStyle = colorObj.primary
@@ -886,7 +933,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         ctx.fillRect(poleX + (flagDir > 0 ? 4 : -34), baseDeckY - 132, 34, 20)
 
         const shakeX =
-          captainShakeRef.current[pIdx] > 0 ? (tick % 2 === 0 ? 1 : -1) * 5 : 0
+          captainShakeRef.current[side] > 0 ? (tick % 2 === 0 ? 1 : -1) * 5 : 0
         const capX = cx + shakeX
         const capY = baseDeckY - 76
 
@@ -897,7 +944,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
         ctx.fillStyle = '#fbbf24'
         ctx.fillRect(capX - 28, capY - 42, 56, 56)
-        const capImg = captainImagesRef.current[pIdx]
+        const capImg = captainImagesMapRef.current[pIndex]
         if (capImg) {
           ctx.drawImage(capImg, capX - 25, capY - 39, 50, 50)
         }
@@ -926,7 +973,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           ctx.fillRect(ux - 9, uy - 40, 18, 14)
 
           ctx.fillStyle = '#0f172a'
-          const lookOffset = pIdx === 0 ? 2 : -2
+          const lookOffset = side === 0 ? 2 : -2
           ctx.fillRect(ux - 4 + lookOffset, uy - 35, 3, 4)
           ctx.fillRect(ux + 2 + lookOffset, uy - 35, 3, 4)
 
@@ -934,14 +981,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           ctx.fillRect(ux - 10, uy - 45, 20, 6)
         })
 
-        const cannonOrig = getCannonOrigin(pIdx)
+        const cannonOrig = getCannonOrigin(side)
         const cannonY = cannonOrig.y + bobY
         ctx.save()
         ctx.translate(cannonOrig.x, cannonY)
         const barrelAngle =
-          activeIdxRef.current === pIdx
+          shooterSideRef.current === side
             ? effectiveAimRef.current.angle
-            : pIdx === 0
+            : side === 0
             ? -0.55
             : -Math.PI + 0.55
         ctx.rotate(barrelAngle)
@@ -957,9 +1004,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         ctx.fillRect(cannonOrig.x - 4, cannonY + 2, 8, 8)
       })
 
-      // Aiming Arc (shorter when 2+ lonksu or ULTRA ALL IN is selected!)
       if (phaseRef.current === 'aiming') {
-        const origin = getCannonOrigin(activeIdxRef.current)
+        const origin = getCannonOrigin(shooterSideRef.current)
         const { angle, power } = effectiveAimRef.current
         const betOpt = currentBetRef.current
         const maxSteps = betOpt.id === 'ultra' ? 6 : betOpt.sips >= 2 ? 8 : 13
@@ -1043,41 +1089,86 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   useEffect(() => {
     mouseAimRef.current = {
-      angle: activeIdx === 0 ? -0.62 : -Math.PI + 0.62,
+      angle: shooterSide === 0 ? -0.62 : -Math.PI + 0.62,
       power: 14.0,
     }
     setCurrentJoke((prev) => getRandomYoMamaJoke(prev))
-  }, [activeIdx])
+  }, [activeIdx, shooterSide])
 
   const advanceToNextPlayer = (
-    updatedPlayers: [PlayerBattleState, PlayerBattleState],
-    nextWind: number
+    updatedPlayers: PlayerBattleState[],
+    nextWind: number,
+    invertNextAim: boolean = false
   ) => {
     if (checkWinConditions(updatedPlayers)) return
 
-    let nextIdx: 0 | 1 = activeIdx === 0 ? 1 : 0
+    // Find next alive player, alternating teams whenever possible
+    const currentTeam = updatedPlayers[activeIdx]?.team ?? 0
+    const desiredTeam: 0 | 1 = currentTeam === 0 ? 1 : 0
+
+    let nextIdx = -1
+    for (let offset = 1; offset <= updatedPlayers.length; offset++) {
+      const candidate = (activeIdx + offset) % updatedPlayers.length
+      if (
+        !isBoatEliminated(updatedPlayers[candidate]) &&
+        updatedPlayers[candidate].team === desiredTeam
+      ) {
+        nextIdx = candidate
+        break
+      }
+    }
+
+    if (nextIdx === -1) {
+      for (let offset = 1; offset <= updatedPlayers.length; offset++) {
+        const candidate = (activeIdx + offset) % updatedPlayers.length
+        if (!isBoatEliminated(updatedPlayers[candidate])) {
+          nextIdx = candidate
+          break
+        }
+      }
+    }
+
+    if (nextIdx === -1) nextIdx = 0
 
     if (updatedPlayers[nextIdx].skipNextTurn) {
       const skippedName = updatedPlayers[nextIdx].name
       updatedPlayers[nextIdx] = { ...updatedPlayers[nextIdx], skipNextTurn: false }
       addBanner(CANVAS_W / 2, 180, `${skippedName} jätab „Halb õnn“ tõttu vahele!`, '#c084fc')
-      nextIdx = activeIdx
+      // Find next alive player after skipped one
+      for (let offset = 1; offset <= updatedPlayers.length; offset++) {
+        const candidate = (nextIdx + offset) % updatedPlayers.length
+        if (!isBoatEliminated(updatedPlayers[candidate])) {
+          nextIdx = candidate
+          break
+        }
+      }
     }
+
+    // Default target to first alive enemy boat
+    const nextTeam = updatedPlayers[nextIdx].team
+    const firstAliveEnemy = updatedPlayers.findIndex(
+      (p) => p.team !== nextTeam && !isBoatEliminated(p)
+    )
 
     playersRef.current = updatedPlayers
     setPlayers(updatedPlayers)
     setWind(nextWind)
     setActiveIdx(nextIdx)
+    if (firstAliveEnemy >= 0) {
+      setTargetIdx(firstAliveEnemy)
+    }
     setIsBonusShot(false)
+    setIsAimInverted(invertNextAim)
     setBetOptions(rollTurnBetOptions())
     setSelectedBetIdx(0)
     setCurrentJoke((prev) => getRandomYoMamaJoke(prev))
-    setPhase('betting')
+    setPhase(isMultiBoatMode ? 'select_target' : 'betting')
   }
 
   const triggerRandomBrainrotOrAdvance = (
-    updatedPlayers: [PlayerBattleState, PlayerBattleState],
-    nextWind: number
+    updatedPlayers: PlayerBattleState[],
+    nextWind: number,
+    invertNextAim: boolean = false
   ) => {
     if (Math.random() < 0.18) {
       const char = BRAINROT_CHARACTERS[Math.floor(Math.random() * BRAINROT_CHARACTERS.length)]
@@ -1087,30 +1178,31 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         avatarUrl: createBrainrotAvatar(char.id),
         pendingNextWind: nextWind,
       })
+      setIsAimInverted(invertNextAim)
       playersRef.current = updatedPlayers
       setPlayers(updatedPlayers)
       setPhase('brainrot_event')
       return
     }
-    advanceToNextPlayer(updatedPlayers, nextWind)
+    advanceToNextPlayer(updatedPlayers, nextWind, invertNextAim)
   }
 
   const applyBrainrotChaosAndContinue = () => {
     if (!activeBrainrot) return
     const { char, pendingNextWind } = activeBrainrot
     const shooterIdx = activeIdx
-    const opponentIdx: 0 | 1 = shooterIdx === 0 ? 1 : 0
+    const oppIdx = targetIdx
 
-    const updated: [PlayerBattleState, PlayerBattleState] = [
-      { ...playersRef.current[0], crew: playersRef.current[0].crew.map((c) => ({ ...c })) },
-      { ...playersRef.current[1], crew: playersRef.current[1].crew.map((c) => ({ ...c })) },
-    ]
+    const updated = playersRef.current.map((p) => ({
+      ...p,
+      crew: p.crew.map((c) => ({ ...c })),
+    }))
 
     if (char.target === 'shooter' || char.target === 'both') {
       updated[shooterIdx].totalSipsTaken += char.extraSips
     }
     if (char.target === 'opponent' || char.target === 'both') {
-      updated[opponentIdx].totalSipsTaken += char.extraSips
+      updated[oppIdx].totalSipsTaken += char.extraSips
     }
 
     let nextWind = pendingNextWind
@@ -1124,28 +1216,27 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         const victim = alive[Math.floor(Math.random() * alive.length)]
         victim.inWater = true
         sound.playSplash()
-        spawnSplash(getCurrentRaftX(shooterIdx) + victim.relX, WATER_Y, '#4ade80', 22)
       }
     } else if (char.chaosEffect === 'steal_shield') {
-      updated[0].hasShield = false
-      updated[1].hasShield = false
+      updated.forEach((p) => {
+        p.hasShield = false
+      })
     } else if (char.chaosEffect === 'ninja_slice') {
-      const alive = updated[opponentIdx].crew.filter((c) => !c.inWater)
+      const alive = updated[oppIdx].crew.filter((c) => !c.inWater)
       if (alive.length > 1) {
         const victim = alive[Math.floor(Math.random() * alive.length)]
         victim.inWater = true
         sound.playSplash()
-        spawnSplash(getCurrentRaftX(opponentIdx) + victim.relX, WATER_Y, '#f43f5e', 22)
       }
     }
 
     setActiveBrainrot(null)
-    advanceToNextPlayer(updated, nextWind)
+    advanceToNextPlayer(updated, nextWind, isAimInverted)
   }
 
   const handleWheelComplete = (outcome: WheelOutcome) => {
     const shooterIdx = activeIdx
-    const opponentIdx: 0 | 1 = shooterIdx === 0 ? 1 : 0
+    const oppIdx = targetIdx
 
     let shooterTurnSips = !lastShotResult.hit ? selectedBetSips : 0
     let opponentTurnSips = lastShotResult.hit ? selectedBetSips : 0
@@ -1157,13 +1248,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       shooterTurnSips += 1
     }
 
-    const updated: [PlayerBattleState, PlayerBattleState] = [
-      { ...playersRef.current[0] },
-      { ...playersRef.current[1] },
-    ]
+    const updated = playersRef.current.map((p) => ({ ...p }))
 
     updated[shooterIdx].totalSipsTaken += shooterTurnSips
-    updated[opponentIdx].totalSipsTaken += opponentTurnSips
+    updated[oppIdx].totalSipsTaken += opponentTurnSips
 
     if (outcome.id === 'shield') {
       updated[shooterIdx].hasShield = true
@@ -1173,43 +1261,43 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }
 
     let nextWind = randomWind()
-    if (outcome.id === 'wind_reverse') {
+    const nextInverted = outcome.id === 'wind_reverse'
+    if (nextInverted) {
       nextWind = windRef.current === 0 ? 0.11 : Number((-windRef.current).toFixed(3))
+      addBanner(CANVAS_W / 2, 160, 'TUULEPÖÖRE: JÄRGMINE SIHTIMINE ON TAGURPIDI!', '#06b6d4')
     }
 
     if (outcome.id === 'double_shot') {
       playersRef.current = updated
       setPlayers(updated)
       setIsBonusShot(true)
+      setIsAimInverted(false)
       setBetOptions(rollTurnBetOptions())
       setSelectedBetIdx(0)
-      setPhase('betting')
+      setPhase(isMultiBoatMode ? 'select_target' : 'betting')
       return
     }
 
-    triggerRandomBrainrotOrAdvance(updated, nextWind)
+    triggerRandomBrainrotOrAdvance(updated, nextWind, nextInverted)
   }
 
   const handleBonusShotFinish = () => {
     const shooterIdx = activeIdx
-    const opponentIdx: 0 | 1 = shooterIdx === 0 ? 1 : 0
+    const oppIdx = targetIdx
 
     const shooterAdd = !lastShotResult.hit ? selectedBetSips : 0
     const opponentAdd = lastShotResult.hit ? selectedBetSips : 0
 
-    const updated: [PlayerBattleState, PlayerBattleState] = [
-      { ...playersRef.current[0] },
-      { ...playersRef.current[1] },
-    ]
+    const updated = playersRef.current.map((p) => ({ ...p }))
     updated[shooterIdx].totalSipsTaken += shooterAdd
-    updated[opponentIdx].totalSipsTaken += opponentAdd
+    updated[oppIdx].totalSipsTaken += opponentAdd
 
     const nextWind = randomWind()
     triggerRandomBrainrotOrAdvance(updated, nextWind)
   }
 
-  const activePlayer = players[activeIdx]
-  const opponentPlayer = players[activeIdx === 0 ? 1 : 0]
+  const leftPlayer = players[leftPlayerIdx] || players[0]
+  const rightPlayer = players[rightPlayerIdx] || players[1] || players[0]
   const windSpeedLabel = Math.abs(Math.round(wind * 100))
   const currentDistanceMeters = Math.round(
     (currentBetOption.raftRightX - currentBetOption.raftLeftX) / 8
@@ -1220,7 +1308,11 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       {/* Top HUD Bar */}
       <header className="w-full bg-slate-900 border-b-4 border-slate-950 px-5 py-3">
         <div className="max-w-[1440px] mx-auto grid grid-cols-3 items-center gap-4">
-          <PlayerHudCard player={players[0]} isActive={activeIdx === 0} align="left" />
+          <PlayerHudCard
+            player={leftPlayer}
+            isActive={activePlayer.id === leftPlayer.id}
+            align="left"
+          />
 
           <div className="flex flex-col items-center gap-2">
             <div className="flex items-center gap-3 bg-slate-950 px-4 py-1.5 border-2 border-sky-500">
@@ -1238,6 +1330,18 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
+              {isMultiBoatMode && phase !== 'firing' && (
+                <button
+                  onClick={() => {
+                    sound.playClick()
+                    setPhase('select_target')
+                  }}
+                  className="px-3 py-1.5 bg-sky-700 hover:bg-sky-600 text-xs sm:text-sm font-bold text-white pixel-btn flex items-center gap-1"
+                >
+                  <Compass className="w-4 h-4" />
+                  Pealtvaade (Vali paat)
+                </button>
+              )}
               <button
                 onClick={() => {
                   sound.playClick()
@@ -1268,25 +1372,46 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 <RotateCcw className="w-4 h-4" />
                 Uus mäng
               </button>
-              <button
-                onClick={() => setMuted(sound.toggleMute())}
-                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-200 pixel-btn"
-                title={muted ? 'Lülita heli sisse' : 'Vaigista heli'}
-              >
-                {muted ? (
-                  <VolumeX className="w-5 h-5 text-rose-400" />
-                ) : (
-                  <Volume2 className="w-5 h-5" />
-                )}
-              </button>
+              <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1 pixel-btn">
+                <button
+                  onClick={() => setMuted(sound.toggleMute())}
+                  className="text-sky-200 hover:text-amber-300"
+                  title={muted ? 'Lülita heli sisse' : 'Vaigista heli'}
+                >
+                  {muted || volume === 0 ? (
+                    <VolumeX className="w-4 h-4 text-rose-400" />
+                  ) : (
+                    <Volume2 className="w-4 h-4 text-amber-300" />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={muted ? 0 : volume}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value)
+                    setVolume(v)
+                    sound.setVolume(v)
+                    setMuted(sound.isMuted())
+                  }}
+                  className="w-16 accent-amber-400 cursor-pointer"
+                  title="Helitugevus"
+                />
+              </div>
             </div>
           </div>
 
-          <PlayerHudCard player={players[1]} isActive={activeIdx === 1} align="right" />
+          <PlayerHudCard
+            player={rightPlayer}
+            isActive={activePlayer.id === rightPlayer.id}
+            align="right"
+          />
         </div>
       </header>
 
-      {/* Main Battle Canvas Container */}
+      {/* Main Battle Area */}
       <main className="relative flex-1 flex items-center justify-center bg-sky-950 px-2 py-1.5">
         <div className="relative w-full max-w-[1440px] aspect-[1280/660] max-h-[calc(100vh-96px)] border-4 border-slate-950 shadow-2xl overflow-hidden bg-sky-900">
           <canvas
@@ -1300,31 +1425,193 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             }`}
           />
 
-          {/* South Park style Estonian „Su ema...“ roast bar */}
-          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-full max-w-3xl px-3">
-            <div className="bg-slate-950/90 border-2 border-amber-400 px-4 py-2.5 flex items-center justify-between gap-3 pixel-box">
-              <div className="flex items-center gap-2 text-sm sm:text-base text-amber-200 font-bold">
-                <MessageSquareWarning className="w-5 h-5 text-amber-400 shrink-0" />
-                <span>
-                  <strong className="text-amber-400">{activePlayer.name} hõikab:</strong> „
-                  {currentJoke}“
-                </span>
+          {/* TOP-DOWN SEA MAP TARGET SELECTION OVERLAY (`pealtvaates vastaste paadid`) */}
+          {phase === 'select_target' && !paused && (
+            <div className="absolute inset-0 z-30 bg-sky-950/95 flex flex-col justify-between p-6 overflow-y-auto">
+              {/* Top-down ocean grid decoration */}
+              <div className="text-center space-y-1">
+                <div className="inline-flex items-center gap-2 bg-amber-400 text-slate-950 px-4 py-1 font-pixel text-xs pixel-box">
+                  <Compass className="w-4 h-4" />
+                  MERELAHINGU PEALTVAADE – VALI SIHTMÄRK!
+                </div>
+                <h2 className="font-pixel text-lg sm:text-xl text-white pt-2">
+                  Laskekord:{' '}
+                  <span className="text-amber-300">{activePlayer.name}</span> (
+                  {activePlayer.team === 0 ? 'Tiim 1' : 'Tiim 2'})
+                </h2>
+                <p className="text-sky-200 font-bold text-base">
+                  Kliki vastase paadile, keda soovid kahuriga rünnata – seejärel avaneb sihtimise ekraan!
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  sound.playClick()
-                  const nextJ = getRandomYoMamaJoke(currentJoke)
-                  setCurrentJoke(nextJ)
-                  addBanner(getCurrentRaftX(activeIdx), WATER_Y - 150, 'SU EMA NALI!', '#fbbf24')
-                }}
-                className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm shrink-0 pixel-btn"
-              >
-                Uus „Su ema“ nali
-              </button>
+
+              {/* Two Fleets Top-Down Sea Chart */}
+              <div className="max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 my-auto py-4">
+                {([0, 1] as const).map((teamNum) => {
+                  const teamPlayers = players
+                    .map((p, idx) => ({ p, idx }))
+                    .filter((item) => item.p.team === teamNum)
+                  const isEnemyTeam = activePlayer.team !== teamNum
+
+                  return (
+                    <div
+                      key={teamNum}
+                      className={`p-5 border-4 pixel-box ${
+                        isEnemyTeam
+                          ? 'bg-rose-950/40 border-rose-500'
+                          : 'bg-sky-900/40 border-sky-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="font-pixel text-xs sm:text-sm text-amber-300">
+                          {teamNum === 0 ? 'TIIM 1 LAEVASTIK (VASAK)' : 'TIIM 2 LAEVASTIK (PAREM)'}
+                        </span>
+                        <span
+                          className={`px-2.5 py-1 text-xs font-bold ${
+                            isEnemyTeam
+                              ? 'bg-rose-600 text-white'
+                              : 'bg-sky-700 text-sky-100'
+                          }`}
+                        >
+                          {isEnemyTeam ? 'KLIKI PAADILE RÜNDAMISEKS!' : 'SINU TIIM'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3.5">
+                        {teamPlayers.map(({ p, idx }) => {
+                          const eliminated = isBoatEliminated(p)
+                          const aliveCrew = p.crew.filter((c) => !c.inWater).length
+                          const isCurrentShooter = idx === activeIdx
+                          const colorObj =
+                            PLAYER_COLORS.find((c) => c.id === p.colorId) ||
+                            PLAYER_COLORS[idx % PLAYER_COLORS.length]
+
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={!isEnemyTeam || eliminated}
+                              onClick={() => {
+                                if (!isEnemyTeam || eliminated) return
+                                sound.playClick()
+                                setTargetIdx(idx)
+                                setPhase('betting')
+                              }}
+                              className={`w-full p-3.5 border-4 text-left flex items-center justify-between gap-4 transition-transform ${
+                                eliminated
+                                  ? 'bg-slate-900/60 border-slate-800 opacity-50 cursor-not-allowed'
+                                  : isEnemyTeam
+                                  ? 'bg-slate-900 hover:bg-slate-800 border-rose-400 hover:border-amber-300 hover:scale-[1.02] cursor-pointer pixel-btn'
+                                  : isCurrentShooter
+                                  ? 'bg-slate-900 border-amber-400 ring-2 ring-amber-300'
+                                  : 'bg-slate-900/80 border-slate-700'
+                              }`}
+                            >
+                              {/* Top-Down Pixel Boat Graphic + Captain */}
+                              <div className="flex items-center gap-3.5 min-w-0">
+                                <div
+                                  className="relative w-20 h-14 bg-amber-900 border-4 flex items-center justify-center shrink-0 rounded-full"
+                                  style={{ borderColor: colorObj.primary }}
+                                >
+                                  <img
+                                    src={p.captainAvatar}
+                                    alt={p.name}
+                                    className="w-11 h-11 pixelated border border-amber-300 bg-slate-950"
+                                  />
+                                  {/* Top-down cannon barrel pointing toward enemy */}
+                                  <div
+                                    className={`absolute top-1/2 -translate-y-1/2 w-4 h-2.5 bg-slate-800 border border-slate-950 ${
+                                      teamNum === 0 ? '-right-3' : '-left-3'
+                                    }`}
+                                  />
+                                </div>
+
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-white text-base truncate">
+                                      {p.name}
+                                    </span>
+                                    {isCurrentShooter && (
+                                      <span className="bg-amber-400 text-slate-950 px-1.5 py-0.5 text-[10px] font-pixel">
+                                        LASKJA
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {eliminated ? (
+                                    <div className="text-xs text-rose-400 font-bold flex items-center gap-1 mt-1">
+                                      <Skull className="w-4 h-4" /> PAAT PÕHJA LASTUD
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-3 mt-1 text-xs">
+                                      <span className="flex items-center gap-0.5 text-rose-400 font-bold">
+                                        {[0, 1, 2, 3, 4].map((h) => (
+                                          <Heart
+                                            key={h}
+                                            className={`w-3.5 h-3.5 ${
+                                              h < p.captainLives
+                                                ? 'fill-rose-500 text-rose-500'
+                                                : 'text-slate-700'
+                                            }`}
+                                          />
+                                        ))}
+                                      </span>
+                                      <span className="text-sky-200 font-semibold">
+                                        Madrused: {aliveCrew}/6
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Action Badge on Right */}
+                              {isEnemyTeam && !eliminated && (
+                                <div className="px-3 py-2 bg-rose-600 text-white font-pixel text-[10px] flex items-center gap-1.5 shrink-0">
+                                  <Crosshair className="w-4 h-4" />
+                                  RÜNDA!
+                                </div>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="text-center text-xs text-sky-300 font-semibold">
+                Pealtvaates näed kõigi tiimiliikmete paate. Kliki vastase paadile, et minna kahuri sihtimise vaatesse!
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* South Park style Estonian „Su ema...“ roast bar */}
+          {phase !== 'select_target' && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 w-full max-w-3xl px-3">
+              <div className="bg-slate-950/90 border-2 border-amber-400 px-4 py-2.5 flex items-center justify-between gap-3 pixel-box">
+                <div className="flex items-center gap-2 text-sm sm:text-base text-amber-200 font-bold">
+                  <MessageSquareWarning className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span>
+                    <strong className="text-amber-400">{activePlayer.name} hõikab:</strong> „
+                    {currentJoke}“
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    sound.playClick()
+                    const nextJ = getRandomYoMamaJoke(currentJoke)
+                    setCurrentJoke(nextJ)
+                    addBanner(getCurrentRaftX(shooterSide), WATER_Y - 150, 'SU EMA NALI!', '#fbbf24')
+                  }}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm shrink-0 pixel-btn"
+                >
+                  Uus „Su ema“ nali
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Step 1 before shot: Dynamic Sip Betting Bar + ULTRA ALL IN */}
           {phase === 'betting' && !paused && (
@@ -1333,7 +1620,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 <div className="font-pixel text-sm text-amber-300 mb-1.5">
                   {isBonusShot
                     ? `${activePlayer.name.toUpperCase()} – TOPELTLASU LISALASK!`
-                    : `LASKEKORD: ${activePlayer.name.toUpperCase()}`}
+                    : `${activePlayer.name.toUpperCase()} RÜNDAB PAATI: ${opponentPlayer.name.toUpperCase()}`}
                 </div>
                 <p className="text-base text-white font-semibold mb-3.5">
                   Selle käigu panused! Praegu mängus:{' '}
@@ -1381,15 +1668,28 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   })}
                 </div>
 
-                <button
-                  onClick={() => {
-                    sound.playClick()
-                    setPhase('aiming')
-                  }}
-                  className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-pixel text-xs sm:text-sm pixel-btn"
-                >
-                  KINNITA PANUS ({selectedBetSips} LONKSU) JA SIHI KAHURIT
-                </button>
+                <div className="flex gap-3">
+                  {isMultiBoatMode && (
+                    <button
+                      onClick={() => {
+                        sound.playClick()
+                        setPhase('select_target')
+                      }}
+                      className="px-4 py-3.5 bg-slate-800 hover:bg-slate-700 text-sky-200 font-bold text-xs sm:text-sm pixel-btn"
+                    >
+                      Vaheta sihtmärki
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      sound.playClick()
+                      setPhase('aiming')
+                    }}
+                    className="flex-1 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-pixel text-xs sm:text-sm pixel-btn"
+                  >
+                    KINNITA PANUS ({selectedBetSips} LONKSU) JA SIHI KAHURIT
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1398,9 +1698,16 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
           {phase === 'aiming' && !paused && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
               <div className="bg-slate-900/90 border-2 border-amber-400 px-6 py-2.5 text-center pixel-box">
+                {isAimInverted && (
+                  <div className="bg-cyan-500 text-slate-950 font-pixel text-xs px-3 py-1 mb-1.5 inline-block">
+                    🌪️ TUULEPÖÖRE: SIHTIMINE ON TAGURPIDI (INVERTED)!
+                  </div>
+                )}
                 <p className="text-base font-bold text-amber-300">
-                  {activePlayer.name}:{' '}
-                  {selectedBetSips >= 2
+                  {activePlayer.name} → {opponentPlayer.name}:{' '}
+                  {isAimInverted
+                    ? 'NB! Hiire liigutamine töötab tagurpidi!'
+                    : selectedBetSips >= 2
                     ? 'Kahur kõigub suure panuse tõttu – ajasta klõps täpselt!'
                     : 'Liiguta hiirt ja klõpsa tulistamiseks!'}
                 </p>
@@ -1436,6 +1743,30 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   <p className="text-white text-base font-semibold leading-relaxed">
                     {activeBrainrot.char.chaosText}
                   </p>
+                </div>
+
+                <div className="bg-slate-950 border-2 border-amber-400 p-3 text-sm sm:text-base font-bold text-amber-300">
+                  {activeBrainrot.char.target === 'both' ? (
+                    <>
+                      JOOVAD MÕLEMAD:{' '}
+                      <span className="text-white underline">{activePlayer.name}</span> (
+                      {activeBrainrot.char.extraSips} lonksu) JA{' '}
+                      <span className="text-white underline">{opponentPlayer.name}</span> (
+                      {activeBrainrot.char.extraSips} lonksu)!
+                    </>
+                  ) : activeBrainrot.char.target === 'shooter' ? (
+                    <>
+                      JOOB LASKJA:{' '}
+                      <span className="text-white underline">{activePlayer.name}</span> võtab{' '}
+                      {activeBrainrot.char.extraSips} lonksu!
+                    </>
+                  ) : (
+                    <>
+                      JOOB SIHTMÄRK:{' '}
+                      <span className="text-white underline">{opponentPlayer.name}</span> võtab{' '}
+                      {activeBrainrot.char.extraSips} lonksu!
+                    </>
+                  )}
                 </div>
 
                 <button
@@ -1507,7 +1838,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         </div>
       </main>
 
-      {/* Risk Wheel Modal after regular shot */}
+      {/* Risk Wheel Modal */}
       {phase === 'wheel' && !paused && (
         <RiskWheelModal
           shooterName={activePlayer.name}
