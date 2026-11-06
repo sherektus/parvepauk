@@ -75,7 +75,14 @@ export function App() {
       <div className="min-h-screen w-full bg-gradient-to-b from-sky-800 via-sky-950 to-slate-950 text-white flex items-center justify-center p-6">
         {drinkSelected === 'none' ? (
           <div className="max-w-lg w-full bg-slate-900 border-4 border-amber-400 p-6 pixel-box text-center space-y-6">
-            <h1 className="font-pixel text-2xl sm:text-3xl text-amber-300">PARVEPAUK</h1>
+            <div>
+              <h1 className="font-pixel text-2xl sm:text-3xl text-amber-300">PARVEPAUK</h1>
+              <div className="mt-3 inline-block -rotate-2 bg-rose-600 border-4 border-amber-300 px-3.5 py-1 pixel-box">
+                <span className="font-pixel text-[10px] sm:text-xs text-amber-200 tracking-wider drop-shadow-[2px_2px_0_#0f172a]">
+                  🐻 MADE BY KARU PEREKOND 🐻
+                </span>
+              </div>
+            </div>
             <p className="text-lg font-bold text-sky-200">
               Enne kui kahurid laetakse: mida te täna joote?
             </p>
@@ -221,6 +228,11 @@ export function App() {
               <h1 className="font-pixel text-3xl sm:text-4xl text-amber-300 drop-shadow-[0_4px_0_#0f172a]">
                 PARVEPAUK
               </h1>
+              <div className="mt-3 inline-block -rotate-2 bg-rose-600 border-4 border-amber-300 px-4 py-1.5 pixel-box">
+                <span className="font-pixel text-xs sm:text-sm text-amber-200 tracking-wider drop-shadow-[2px_2px_0_#0f172a]">
+                  🐻 MADE BY KARU PEREKOND 🐻
+                </span>
+              </div>
               <p className="text-sky-200 text-lg font-semibold mt-3">
                 Parveduell 2 kuni 6 mängijale: Italian Brainrot & „Su ema“ eri!
               </p>
