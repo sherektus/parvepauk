@@ -10,7 +10,3 @@ Aus joogikontroll juba uksel: Kui keegi üritab alguses valida „Alkoholivaba j
 Brainrot-sabotaaž ja tagurpidi sihtimine: Just siis, kui oled elu parima lasu teele pannud, võib keset kuuli lendu välja hüpata Lirili Larila ja vastase paadi eest ära puhuda. Lisaks jagab riskiratas kilpe, topeltlaske ja „Tuulepööret“, mis keerab järgmise mängija hiire täiesti tagurpidi (inverted)!
 South Parki stiilis „Su ema...“ sõnasõda: Iga lasu saadavad eepiline meremehe-taustamuusika ja kaptenite eestikeelsed „Su ema on nii paks...“ solvangud.
 Mängi kohe brauseris ---> https://sherektus.github.io/parvepauk/
-Mängi kohe brauseris ---> https://sherektus.github.io/parvepauk/
-Mängi kohe brauseris ---> https://sherektus.github.io/parvepauk/
-Mängi kohe brauseris ---> https://sherektus.github.io/parvepauk/
-Mängi kohe brauseris ---> https://sherektus.github.io/parvepauk/
