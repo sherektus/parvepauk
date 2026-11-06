@@ -120,7 +120,7 @@ export function App() {
 
             {noTurnedToSuperJa && (
               <p className="text-amber-300 font-bold text-base">
-                Haha, „Ei“ ei päästa sind! Vajuta nüüd ausalt ära:
+                Valetada pole mõtet – „Ei“ nupp läks häbist katki! Tunnista ausalt üles:
               </p>
             )}
 
@@ -145,13 +145,13 @@ export function App() {
                     setDrinkSelected('done')
                   }
                 }}
-                className={`py-4 font-pixel text-sm pixel-btn ${
+                className={`py-4 px-2 font-pixel text-xs sm:text-sm pixel-btn ${
                   noTurnedToSuperJa
                     ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 scale-105'
                     : 'bg-rose-600 hover:bg-rose-500 text-white'
                 }`}
               >
-                {noTurnedToSuperJa ? 'SUPER JA!' : 'EI'}
+                {noTurnedToSuperJa ? '100% SERTIFITSEERITUD JOBID! 🍼' : 'EI'}
               </button>
             </div>
           </div>
