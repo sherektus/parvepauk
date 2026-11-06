@@ -45,7 +45,6 @@ class SoundEngine {
   private bgmStarted: boolean = false
   private stepIdx: number = 0
   private bassIdx: number = 0
-  private bgmTimer: number | null = null
 
   constructor() {
     const saved = localStorage.getItem('parvepauk_muted')
@@ -122,7 +121,7 @@ class SoundEngine {
     const stepMs = 195 // Bouncy sea shanty tempo (~154 BPM eighth notes)
     let holdTicks = 0
 
-    this.bgmTimer = window.setInterval(() => {
+    window.setInterval(() => {
       if (this.muted) return
       const ctx = this.getContext()
       if (!ctx) return

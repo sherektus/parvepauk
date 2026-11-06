@@ -188,6 +188,7 @@ function parvepaukRelayPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: './',
   server: {
     host: true,
   },
