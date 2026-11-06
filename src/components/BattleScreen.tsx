@@ -95,6 +95,16 @@ interface FloatingBanner {
   life: number
 }
 
+interface ExplosionRing {
+  x: number
+  y: number
+  radius: number
+  maxRadius: number
+  life: number
+  maxLife: number
+  label: string
+}
+
 interface MidFlightSabotage {
   charName: string
   charId: BrainrotId
@@ -303,6 +313,9 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
   const projectileRef = useRef<Projectile | null>(null)
   const particlesRef = useRef<Particle[]>([])
+  const explosionsRef = useRef<ExplosionRing[]>([])
+  const screenShakeRef = useRef<number>(0)
+  const impactFlashRef = useRef<number>(0)
   const bannersRef = useRef<FloatingBanner[]>([])
   const captainShakeRef = useRef<[number, number]>([0, 0])
   const captainImagesMapRef = useRef<Record<number, HTMLImageElement>>({})
@@ -358,20 +371,34 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     }
   }
 
-  const spawnExplosion = (x: number, y: number, count = 28) => {
-    const colors = ['#fbbf24', '#f97316', '#ef4444', '#ffffff']
+  const spawnExplosion = (x: number, y: number, count = 36, isBigHit = false) => {
+    const colors = ['#fbbf24', '#f97316', '#ef4444', '#ffffff', '#92400e', '#475569']
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2
-      const speed = 1.5 + Math.random() * 7.5
+      const speed = 2.0 + Math.random() * (isBigHit ? 10.5 : 7.5)
       particlesRef.current.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
+        vy: Math.sin(angle) * speed - (isBigHit ? 1.8 : 0.8),
         color: colors[i % colors.length],
-        size: 6 + Math.floor(Math.random() * 5),
+        size: (isBigHit ? 8 : 6) + Math.floor(Math.random() * 6),
         life: 0,
-        maxLife: 22 + Math.floor(Math.random() * 14),
+        maxLife: 26 + Math.floor(Math.random() * 18),
+      })
+    }
+
+    if (isBigHit) {
+      screenShakeRef.current = 22
+      impactFlashRef.current = 6
+      explosionsRef.current.push({
+        x,
+        y,
+        radius: 14,
+        maxRadius: 115,
+        life: 0,
+        maxLife: 28,
+        label: '💥 PAUK! 💥',
       })
     }
   }
@@ -582,6 +609,14 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         Math.max(0, captainShakeRef.current[0] - 1),
         Math.max(0, captainShakeRef.current[1] - 1),
       ]
+      screenShakeRef.current = Math.max(0, screenShakeRef.current - 1)
+      impactFlashRef.current = Math.max(0, impactFlashRef.current - 1)
+
+      explosionsRef.current = explosionsRef.current.filter((ex) => {
+        ex.life++
+        ex.radius = 14 + (ex.maxRadius - 14) * (ex.life / ex.maxLife)
+        return ex.life < ex.maxLife
+      })
 
       const proj = projectileRef.current
       if (proj) {
@@ -663,7 +698,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         const capY = WATER_Y - 92
         if (Math.hypot(proj.x - capX, proj.y - capY) < 28) {
           sound.playHit()
-          spawnExplosion(proj.x, proj.y, proj.isUltra ? 45 : 28)
+          spawnExplosion(proj.x, proj.y, proj.isUltra ? 56 : 42, true)
           captainShakeRef.current[targetSide] = 32
 
           const reaction =
@@ -716,7 +751,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
           if (hitCount > 0) {
             sound.playHit()
-            spawnExplosion(proj.x, proj.y, proj.isUltra ? 42 : 28)
+            spawnExplosion(proj.x, proj.y, proj.isUltra ? 52 : 38, true)
             addBanner(
               proj.x,
               proj.y - 38,
@@ -831,6 +866,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       if (!ctx) return
 
       ctx.imageSmoothingEnabled = false
+      ctx.save()
+
+      if (screenShakeRef.current > 0) {
+        const mag = screenShakeRef.current * 0.75
+        ctx.translate((Math.random() - 0.5) * mag * 2, (Math.random() - 0.5) * mag * 2)
+      }
 
       const skyBands = ['#0c4a6e', '#075985', '#0369a1', '#0284c7', '#38bdf8']
       const bandH = Math.ceil(WATER_Y / skyBands.length)
@@ -1066,6 +1107,35 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         ctx.fillRect(Math.round(pt.x), Math.round(pt.y), pt.size, pt.size)
       })
 
+      // Draw expanding explosion shockwaves, fireballs & "PAUK!" starbursts
+      explosionsRef.current.forEach((ex) => {
+        const progress = ex.life / ex.maxLife
+        ctx.save()
+        // Outer orange/red blast ring
+        ctx.strokeStyle = progress < 0.5 ? '#ef4444' : '#f97316'
+        ctx.lineWidth = Math.max(2, Math.round(12 * (1 - progress)))
+        ctx.beginPath()
+        ctx.arc(ex.x, ex.y, ex.radius, 0, Math.PI * 2)
+        ctx.stroke()
+
+        // Inner bright yellow fireball core
+        if (progress < 0.65) {
+          ctx.fillStyle = progress < 0.25 ? '#ffffff' : '#fde047'
+          ctx.beginPath()
+          ctx.arc(ex.x, ex.y, ex.radius * (0.65 - progress * 0.7), 0, Math.PI * 2)
+          ctx.fill()
+        }
+
+        // Comic "💥 PAUK! 💥" text at center of blast
+        ctx.font = 'bold 28px "Press Start 2P", Fredoka, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#0f172a'
+        ctx.fillText(ex.label, ex.x + 3, ex.y - ex.radius * 0.35 + 3)
+        ctx.fillStyle = '#fde047'
+        ctx.fillText(ex.label, ex.x, ex.y - ex.radius * 0.35)
+        ctx.restore()
+      })
+
       bannersRef.current.forEach((b) => {
         ctx.save()
         ctx.font = 'bold 20px Fredoka, sans-serif'
@@ -1076,6 +1146,13 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         ctx.fillText(b.text, b.x, b.y)
         ctx.restore()
       })
+
+      if (impactFlashRef.current > 0) {
+        ctx.fillStyle = `rgba(254, 240, 138, ${impactFlashRef.current * 0.06})`
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+      }
+
+      ctx.restore()
     }
 
     const loop = () => {

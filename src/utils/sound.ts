@@ -265,18 +265,57 @@ class SoundEngine {
   public playHit() {
     const ctx = this.getContext()
     if (!ctx) return
-    const notes = [280, 190, 120]
+    const now = ctx.currentTime
+
+    // Deep explosion sub-boom
+    const boomOsc = ctx.createOscillator()
+    const boomGain = ctx.createGain()
+    boomOsc.type = 'sawtooth'
+    boomOsc.frequency.setValueAtTime(190, now)
+    boomOsc.frequency.exponentialRampToValueAtTime(24, now + 0.48)
+    boomGain.gain.setValueAtTime(0.42, now)
+    boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+    boomOsc.connect(boomGain)
+    boomGain.connect(this.getOutputNode(ctx))
+    boomOsc.start(now)
+    boomOsc.stop(now + 0.52)
+
+    // Crunchy explosion noise burst
+    const bufferSize = Math.floor(ctx.sampleRate * 0.42)
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.4)
+    }
+    const noise = ctx.createBufferSource()
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.setValueAtTime(1400, now)
+    filter.frequency.exponentialRampToValueAtTime(180, now + 0.42)
+
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.38, now)
+    noiseGain.gain.exponentialRampToValueAtTime(0.005, now + 0.42)
+
+    noise.buffer = buffer
+    noise.connect(filter)
+    filter.connect(noiseGain)
+    noiseGain.connect(this.getOutputNode(ctx))
+    noise.start(now)
+
+    // Retro impact crunch notes
+    const notes = [320, 210, 110]
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
       osc.type = 'square'
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.05)
-      gain.gain.setValueAtTime(0.18, ctx.currentTime + i * 0.05)
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.05 + 0.1)
+      osc.frequency.setValueAtTime(freq, now + i * 0.045)
+      gain.gain.setValueAtTime(0.22, now + i * 0.045)
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.12)
       osc.connect(gain)
       gain.connect(this.getOutputNode(ctx))
-      osc.start(ctx.currentTime + i * 0.05)
-      osc.stop(ctx.currentTime + i * 0.05 + 0.11)
+      osc.start(now + i * 0.045)
+      osc.stop(now + i * 0.045 + 0.13)
     })
   }
 
