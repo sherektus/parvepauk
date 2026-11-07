@@ -34,7 +34,7 @@ Game text language: the same language the user writes in.
 - Sound and music: if the user wants them, generate them in code with the Web Audio API (no audio files, no downloads) unless the user provides files. Start audio only after the player's first click, and add a mute button.
 
 ## Workflow
-- After every working change, commit with a short message and push to GitHub.
+- After every working change, commit with a short message, push to GitHub (`git push`), AND deploy to GitHub Pages (`npm run deploy`) so `https://sherektus.github.io/parvepauk/` is always updated.
 - Start the dev server in the background with `npm run dev` and give the user the local link.
 - The first time the server starts: check whether this computer is Mac or Windows, then ask the user if they want you to open the game in their browser. If yes, open it with the correct command for their system (Mac: `open <url>`, Windows: `start <url>`).
 - After each change, say in 1–3 plain sentences what changed and what to try.
