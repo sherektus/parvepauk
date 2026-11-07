@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Camera, Upload, ArrowLeft, Play, X, Users, Ship, QrCode, Smartphone } from 'lucide-react'
 import QRCode from 'qrcode'
 import { BRAINROT_CHARACTERS, PLAYER_COLORS, PLAYER_COUNT_SLOGANS, type BrainrotId } from '../data/gameContent'
-import { convertImageToPixelAvatar, createBrainrotAvatar } from '../utils/pixelAvatar'
+import {
+  convertImageToPixelAvatar,
+  createBrainrotAvatar,
+  ensureNeutralAvatarBackground,
+} from '../utils/pixelAvatar'
 import { sound } from '../utils/sound'
 
 export interface PlayerSetupConfig {
@@ -97,13 +101,15 @@ export const SetupModal: React.FC<SetupModalProps> = ({
       if (seenPayloads.has(sig)) return
       seenPayloads.add(sig)
 
-      sound.playHit()
-      onUpdatePlayer(idx, {
-        captainAvatar: avatarDataUrl,
-        hasCustomPhoto: true,
-        selectedBrainrotId: undefined,
+      ensureNeutralAvatarBackground(avatarDataUrl).then((cleanUrl) => {
+        sound.playHit()
+        onUpdatePlayer(idx, {
+          captainAvatar: cleanUrl,
+          hasCustomPhoto: true,
+          selectedBrainrotId: undefined,
+        })
+        setActiveQrIdx((curr) => (curr === idx ? null : curr))
       })
-      setActiveQrIdx((curr) => (curr === idx ? null : curr))
     }
 
     const parseAndApplyNtfyItem = (outer: {
@@ -235,9 +241,11 @@ export const SetupModal: React.FC<SetupModalProps> = ({
       }
     }
 
-    const mobileUrl = `${baseUrl}?mobile=1&session=${encodeURIComponent(sessionId)}&player=${
-      activeQrIdx + 1
-    }&name=${encodeURIComponent(player?.name || `Kapten ${activeQrIdx + 1}`)}`
+    const mobileUrl = `${baseUrl}?mobile=1&v=${Date.now()}&session=${encodeURIComponent(
+      sessionId
+    )}&player=${activeQrIdx + 1}&name=${encodeURIComponent(
+      player?.name || `Kapten ${activeQrIdx + 1}`
+    )}`
 
     QRCode.toDataURL(mobileUrl, {
       width: 240,
