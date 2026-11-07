@@ -4,7 +4,7 @@ import { convertImageToPixelAvatar } from '../utils/pixelAvatar'
 
 interface MobileCaptureViewProps {
   sessionId: string
-  playerNumber: 1 | 2
+  playerNumber: number
   playerName?: string
 }
 
@@ -129,7 +129,7 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
   // Recompute pixel-art avatar preview whenever rawImage or crop changes
   useEffect(() => {
     if (!rawImage || step !== 'crop_preview') return
-    const pixelUrl = convertImageToPixelAvatar(rawImage, crop, 24, 192)
+    const pixelUrl = convertImageToPixelAvatar(rawImage, crop, 48, 240)
     setPixelPreview(pixelUrl)
   }, [rawImage, crop, step])
 
@@ -145,40 +145,60 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
     setSending(true)
     setErrorMsg(null)
     try {
-      const res = await fetch('/api/session/avatar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          player: playerNumber,
-          avatarDataUrl: pixelPreview,
-        }),
-      })
-
-      if (res.status === 410) {
-        setExpired(true)
-        setRawImage(null)
-        setPixelPreview(null)
-        setSending(false)
-        return
+      const payload = {
+        type: 'AVATAR_READY',
+        sessionId,
+        player: playerNumber,
+        avatarDataUrl: pixelPreview,
       }
 
-      if (!res.ok) {
-        throw new Error('Saatmine ebaõnnestus')
+      let deliveredOk = false
+
+      // 1. Try local Vite relay (works when phone & PC are on same WiFi LAN)
+      try {
+        const res = await fetch('/api/session/avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.status === 410) {
+          setExpired(true)
+          setRawImage(null)
+          setPixelPreview(null)
+          setSending(false)
+          return
+        }
+        if (res.ok) {
+          deliveredOk = true
+        }
+      } catch {
+        // Ignore if running on static GitHub Pages
       }
 
-      // Also broadcast locally in case user opened the link on the same computer
+      // 2. Also send via public HTTPS relay so QR works anywhere (GitHub Pages, 4G/5G, or WiFi)
+      try {
+        const ntfyRes = await fetch(`https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        if (ntfyRes.ok) {
+          deliveredOk = true
+        }
+      } catch {
+        // Ignore if offline LAN
+      }
+
+      // 3. Also broadcast locally in case user opened the link on the same computer
       try {
         const bc = new BroadcastChannel('parvepauk_sync')
-        bc.postMessage({
-          type: 'AVATAR_READY',
-          sessionId,
-          player: playerNumber,
-          avatarDataUrl: pixelPreview,
-        })
+        bc.postMessage(payload)
         bc.close()
       } catch {
         // Ignore if BroadcastChannel unsupported
+      }
+
+      if (!deliveredOk) {
+        throw new Error('Saatmine ebaõnnestus')
       }
 
       // Immediately delete temporary images from phone memory after sending
@@ -186,7 +206,7 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
       setPixelPreview(null)
       setStep('sent')
     } catch {
-      setErrorMsg('Ühendus mänguga ebaõnnestus. Kontrolli, et oled samas WiFi-võrgus.')
+      setErrorMsg('Ühendus mänguga ebaõnnestus. Kontrolli interneti või WiFi ühendust.')
     } finally {
       setSending(false)
     }

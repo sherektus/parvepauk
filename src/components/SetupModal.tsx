@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Camera, Upload, ArrowLeft, Play, X, Users, Ship } from 'lucide-react'
+import { Camera, Upload, ArrowLeft, Play, X, Users, Ship, QrCode, Smartphone } from 'lucide-react'
+import QRCode from 'qrcode'
 import { BRAINROT_CHARACTERS, PLAYER_COLORS, type BrainrotId } from '../data/gameContent'
 import { convertImageToPixelAvatar, createBrainrotAvatar } from '../utils/pixelAvatar'
 import { sound } from '../utils/sound'
@@ -15,6 +16,7 @@ export interface PlayerSetupConfig {
 }
 
 interface SetupModalProps {
+  sessionId: string
   playerCount: number
   onChangePlayerCount: (count: number) => void
   players: PlayerSetupConfig[]
@@ -24,6 +26,7 @@ interface SetupModalProps {
 }
 
 export const SetupModal: React.FC<SetupModalProps> = ({
+  sessionId,
   playerCount,
   onChangePlayerCount,
   players,
@@ -42,6 +45,10 @@ export const SetupModal: React.FC<SetupModalProps> = ({
 
   const [activeWebcamIdx, setActiveWebcamIdx] = useState<number | null>(null)
   const [webcamError, setWebcamError] = useState<string | null>(null)
+  const [activeQrIdx, setActiveQrIdx] = useState<number | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const [lanIp, setLanIp] = useState<string | null>(null)
+  const [useLocalLanUrl, setUseLocalLanUrl] = useState<boolean>(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -55,12 +62,136 @@ export const SetupModal: React.FC<SetupModalProps> = ({
   }
 
   useEffect(() => {
+    // Register session on local dev server if running locally
+    fetch('/api/session/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    }).catch(() => {})
+
+    fetch('/api/lan-info')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.ip && data.ip !== 'localhost') {
+          setLanIp(data.ip)
+        }
+      })
+      .catch(() => {})
+
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop())
       }
     }
-  }, [])
+  }, [sessionId])
+
+  // Listen for mobile QR avatar uploads (via ntfy.sh HTTPS relay, local Vite poll, and BroadcastChannel)
+  useEffect(() => {
+    const applyAvatar = (playerNum: number, avatarDataUrl: string) => {
+      const idx = playerNum - 1
+      if (idx < 0 || idx >= 6 || !avatarDataUrl.startsWith('data:image/')) return
+      sound.playHit()
+      onUpdatePlayer(idx, {
+        captainAvatar: avatarDataUrl,
+        hasCustomPhoto: true,
+        selectedBrainrotId: undefined,
+      })
+      setActiveQrIdx((curr) => (curr === idx ? null : curr))
+    }
+
+    // 1. BroadcastChannel for same-device testing
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel('parvepauk_sync')
+      bc.onmessage = (ev) => {
+        const data = ev.data
+        if (data?.type === 'AVATAR_READY' && data.sessionId === sessionId) {
+          applyAvatar(Number(data.player), String(data.avatarDataUrl))
+        }
+      }
+    } catch {
+      // Ignore
+    }
+
+    // 2. Real-time Server-Sent Events via ntfy.sh (works on GitHub Pages & across mobile networks)
+    let es: EventSource | null = null
+    try {
+      es = new EventSource(`https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}/sse`)
+      es.onmessage = (ev) => {
+        try {
+          const outer = JSON.parse(ev.data)
+          if (outer?.event === 'message' && outer.message) {
+            const inner = JSON.parse(outer.message)
+            if (inner?.type === 'AVATAR_READY' && inner.avatarDataUrl) {
+              applyAvatar(Number(inner.player), String(inner.avatarDataUrl))
+            }
+          }
+        } catch {
+          // Ignore malformed message
+        }
+      }
+    } catch {
+      // Ignore if offline
+    }
+
+    // 3. Local Vite server polling (works on offline local WiFi LAN)
+    const pollTimer = setInterval(() => {
+      fetch(`/api/session/poll?session=${encodeURIComponent(sessionId)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.avatars) {
+            Object.entries(data.avatars).forEach(([pKey, url]) => {
+              if (typeof url === 'string') {
+                applyAvatar(Number(pKey), url)
+              }
+            })
+          }
+        })
+        .catch(() => {})
+    }, 1800)
+
+    return () => {
+      if (bc) bc.close()
+      if (es) es.close()
+      clearInterval(pollTimer)
+    }
+  }, [sessionId, onUpdatePlayer])
+
+  // Generate QR code DataURL whenever activeQrIdx or link mode changes
+  useEffect(() => {
+    if (activeQrIdx === null) {
+      setQrDataUrl(null)
+      return
+    }
+    const player = players[activeQrIdx]
+    const isLocalhost =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+
+    let baseUrl = `${window.location.origin}${window.location.pathname}`
+    if (isLocalhost) {
+      if (useLocalLanUrl && lanIp) {
+        const port = window.location.port ? `:${window.location.port}` : ''
+        baseUrl = `http://${lanIp}${port}${window.location.pathname}`
+      } else {
+        baseUrl = 'https://sherektus.github.io/parvepauk/'
+      }
+    }
+
+    const mobileUrl = `${baseUrl}?mobile=1&session=${encodeURIComponent(sessionId)}&player=${
+      activeQrIdx + 1
+    }&name=${encodeURIComponent(player?.name || `Kapten ${activeQrIdx + 1}`)}`
+
+    QRCode.toDataURL(mobileUrl, {
+      width: 240,
+      margin: 2,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    })
+      .then((url) => setQrDataUrl(url))
+      .catch(() => setQrDataUrl(null))
+  }, [activeQrIdx, sessionId, players, lanIp, useLocalLanUrl])
 
   const openComputerWebcam = async (idx: number) => {
     sound.playClick()
@@ -323,6 +454,18 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                     <div className="flex flex-wrap gap-1.5">
                       <button
                         type="button"
+                        onClick={() => {
+                          sound.playClick()
+                          stopWebcam()
+                          setActiveQrIdx(idx)
+                        }}
+                        className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs pixel-btn flex items-center gap-1"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        QR-kood
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => openComputerWebcam(idx)}
                         className="px-2.5 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs pixel-btn flex items-center gap-1"
                       >
@@ -388,6 +531,76 @@ export const SetupModal: React.FC<SetupModalProps> = ({
           )
         })}
       </div>
+
+      {/* QR Code Scanner Modal */}
+      {activeQrIdx !== null && players[activeQrIdx] && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="max-w-sm w-full bg-slate-900 border-4 border-amber-400 p-5 pixel-box text-center space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <span className="font-pixel text-xs text-amber-300 flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4" />
+                SKANNI TELEFONIGA
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  sound.playClick()
+                  setActiveQrIdx(null)
+                }}
+                className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-200 pixel-btn"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <div className="text-sm font-bold text-white">
+                {players[activeQrIdx].name} ({activeQrIdx + 1}. paat)
+              </div>
+              <p className="text-xs text-sky-200 mt-1">
+                Skanni QR-kood telefoni kaameraga, tee selfie ja pilt ilmub kohe siia mängu!
+              </p>
+            </div>
+
+            <div className="bg-white p-3 w-56 h-56 mx-auto border-4 border-slate-950 flex items-center justify-center">
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="QR-kood pildistamiseks"
+                  className="w-full h-full object-contain pixelated"
+                />
+              ) : (
+                <span className="text-xs font-bold text-slate-800">Loon QR-koodi...</span>
+              )}
+            </div>
+
+            {(window.location.hostname === 'localhost' ||
+              window.location.hostname === '127.0.0.1') &&
+              lanIp && (
+                <button
+                  type="button"
+                  onClick={() => setUseLocalLanUrl((v) => !v)}
+                  className="text-[11px] text-amber-300 hover:underline font-semibold block mx-auto"
+                >
+                  {useLocalLanUrl
+                    ? 'Kasuta HTTPS veebilinki (töötab iga võrguga)'
+                    : `Või kasuta kohalikku WiFi võrku (${lanIp})`}
+                </button>
+              )}
+
+            <button
+              type="button"
+              onClick={() => {
+                sound.playClick()
+                setActiveQrIdx(null)
+              }}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm pixel-btn"
+            >
+              Sulge
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

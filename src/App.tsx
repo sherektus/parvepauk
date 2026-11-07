@@ -15,6 +15,7 @@ import {
 import { BRAINROT_CHARACTERS, PLAYER_COLORS } from './data/gameContent'
 import { createBrainrotAvatar } from './utils/pixelAvatar'
 import { SetupModal, type PlayerSetupConfig } from './components/SetupModal'
+import { MobileCaptureView } from './components/MobileCaptureView'
 import { RulesModal } from './components/RulesModal'
 import { BattleScreen, type PlayerBattleState } from './components/BattleScreen'
 import { sound } from './utils/sound'
@@ -32,6 +33,26 @@ function createInitialPlayers(): PlayerSetupConfig[] {
 }
 
 export function App() {
+  const [mobileParams] = useState<{
+    sessionId: string
+    playerNumber: number
+    playerName?: string
+  } | null>(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('mobile') === '1' && params.get('session')) {
+      return {
+        sessionId: params.get('session')!,
+        playerNumber: Math.max(1, Math.min(6, Number(params.get('player')) || 1)),
+        playerName: params.get('name') || undefined,
+      }
+    }
+    return null
+  })
+
+  const [sessionId] = useState<string>(() => {
+    return 'pp_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36)
+  })
+
   const [drinkSelected, setDrinkSelected] = useState<'none' | 'prompt_jobu' | 'done'>('none')
   const [noTurnedToSuperJa, setNoTurnedToSuperJa] = useState(false)
 
@@ -68,6 +89,16 @@ export function App() {
   }
 
   const activeSetupPlayers = players.slice(0, playerCount)
+
+  if (mobileParams) {
+    return (
+      <MobileCaptureView
+        sessionId={mobileParams.sessionId}
+        playerNumber={mobileParams.playerNumber}
+        playerName={mobileParams.playerName}
+      />
+    )
+  }
 
   // Initial Drink Selection Gate & "Kas te olete jobid?" Prompt
   if (drinkSelected !== 'done') {
@@ -314,6 +345,7 @@ export function App() {
 
       {screen === 'setup' && (
         <SetupModal
+          sessionId={sessionId}
           playerCount={playerCount}
           onChangePlayerCount={setPlayerCount}
           players={players}

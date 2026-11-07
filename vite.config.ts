@@ -7,10 +7,7 @@ import { defineConfig, type Plugin } from 'vite'
 interface SessionRecord {
   expired: boolean
   createdAt: number
-  pendingAvatars: {
-    1?: string
-    2?: string
-  }
+  pendingAvatars: Record<number, string>
 }
 
 function getLocalLanIp(): string {
@@ -112,7 +109,8 @@ function parvepaukRelayPlugin(): Plugin {
           if (pathname === '/api/session/avatar' && req.method === 'POST') {
             const body = await readJsonBody(req)
             const sessionId = String(body.sessionId || '')
-            const player = Number(body.player) === 2 ? 2 : 1
+            const rawPlayer = Number(body.player) || 1
+            const player = Math.max(1, Math.min(6, rawPlayer))
             const avatarDataUrl = String(body.avatarDataUrl || '')
 
             if (!sessionId || !avatarDataUrl.startsWith('data:image/')) {
@@ -145,14 +143,13 @@ function parvepaukRelayPlugin(): Plugin {
             }
 
             // Deliver avatars to the desktop game and immediately delete temporary image data from memory
-            const delivered: { 1?: string; 2?: string } = {}
-            if (rec.pendingAvatars[1]) {
-              delivered[1] = rec.pendingAvatars[1]
-              delete rec.pendingAvatars[1]
-            }
-            if (rec.pendingAvatars[2]) {
-              delivered[2] = rec.pendingAvatars[2]
-              delete rec.pendingAvatars[2]
+            const delivered: Record<number, string> = {}
+            for (const key of Object.keys(rec.pendingAvatars)) {
+              const pNum = Number(key)
+              if (rec.pendingAvatars[pNum]) {
+                delivered[pNum] = rec.pendingAvatars[pNum]
+                delete rec.pendingAvatars[pNum]
+              }
             }
 
             return sendJson(res, 200, {
