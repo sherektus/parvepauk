@@ -12,7 +12,7 @@ import {
   CupSoda,
   Users,
 } from 'lucide-react'
-import { BRAINROT_CHARACTERS, PLAYER_COLORS } from './data/gameContent'
+import { BRAINROT_CHARACTERS, PLAYER_COLORS, PLAYER_COUNT_SLOGANS } from './data/gameContent'
 import { createBrainrotAvatar } from './utils/pixelAvatar'
 import { SetupModal, type PlayerSetupConfig } from './components/SetupModal'
 import { MobileCaptureView } from './components/MobileCaptureView'
@@ -50,7 +50,15 @@ export function App() {
   })
 
   const [sessionId] = useState<string>(() => {
-    return 'pp_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36)
+    try {
+      const existing = sessionStorage.getItem('parvepauk_session_id')
+      if (existing) return existing
+      const created = 'pp_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36)
+      sessionStorage.setItem('parvepauk_session_id', created)
+      return created
+    } catch {
+      return 'pp_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36)
+    }
   })
 
   const [drinkSelected, setDrinkSelected] = useState<'none' | 'prompt_jobu' | 'done'>('none')
@@ -270,12 +278,12 @@ export function App() {
             </div>
 
             {/* Quick Player Count Selector on Home Screen */}
-            <div className="bg-slate-900/90 border-2 border-amber-400 p-4 max-w-lg mx-auto pixel-box space-y-2.5">
-              <div className="text-xs font-pixel text-amber-300 flex items-center justify-center gap-2">
-                <Users className="w-4 h-4" />
+            <div className="bg-slate-900/90 border-2 border-amber-400 p-5 max-w-xl mx-auto pixel-box space-y-3">
+              <div className="text-xs sm:text-sm font-pixel text-amber-300 flex items-center justify-center gap-2">
+                <Users className="w-5 h-5" />
                 VALI MÄNGUREŽIIM (2–6 MÄNGIJAT):
               </div>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-2.5">
                 {[2, 3, 4, 5, 6].map((cnt) => (
                   <button
                     key={cnt}
@@ -284,7 +292,7 @@ export function App() {
                       sound.playClick()
                       setPlayerCount(cnt)
                     }}
-                    className={`py-2 font-bold text-sm pixel-btn ${
+                    className={`py-2.5 font-extrabold text-sm sm:text-base pixel-btn ${
                       playerCount === cnt
                         ? 'bg-amber-400 text-slate-950 scale-105'
                         : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
@@ -294,10 +302,8 @@ export function App() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-sky-200">
-                {playerCount === 2
-                  ? 'Kahekesi: klassikaline parveduell 1 vs 1!'
-                  : `${playerCount} mängijat: igal mängijal on oma paat ja enne lasku valid pealtvaates, keda rünnata!`}
+              <p className="text-base sm:text-lg font-extrabold text-amber-300 pt-1">
+                {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem – tuld kõigi pihta! 💥'}
               </p>
             </div>
 
@@ -337,8 +343,8 @@ export function App() {
             </div>
           </div>
 
-          <div className="text-center text-xs text-sky-300/80 font-semibold">
-            2–6 mängijat • Pealtvaates sihtmärgi valik • Italian Brainrot kaptenid & veebikaamera
+          <div className="text-center text-sm sm:text-base text-amber-300/90 font-extrabold">
+            Vala klaasid täis, lae kahurid ja lase sõbrad põhja! 🏴‍☠️🍻
           </div>
         </div>
       )}

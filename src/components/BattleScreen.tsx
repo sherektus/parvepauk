@@ -1645,8 +1645,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   <span className="text-amber-300">{activePlayer.name}</span> (
                   {activePlayer.team === 0 ? 'Tiim 1' : 'Tiim 2'})
                 </h2>
-                <p className="text-sky-200 font-bold text-base">
-                  Kliki vastase paadile, keda soovid kahuriga rünnata – seejärel avaneb sihtimise ekraan!
+                <p className="text-sky-200 font-extrabold text-lg sm:text-xl">
+                  Vali ohver ja tõmba talle vesi peale! 💥
                 </p>
               </div>
 
@@ -1785,8 +1785,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 })}
               </div>
 
-              <div className="text-center text-xs text-sky-300 font-semibold">
-                Pealtvaates näed kõigi tiimiliikmete paate. Kliki vastase paadile, et minna kahuri sihtimise vaatesse!
+              <div className="text-center text-base sm:text-lg text-amber-300 font-extrabold">
+                Seltsis segasem – keegi peab täna põhja minema! 🏴‍☠️🍻
               </div>
             </div>
           )}
@@ -1880,8 +1880,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                     <span className="text-white underline">3 ELU</span> (teiste valikutega 1 elu)!
                   </div>
                 ) : (
-                  <p className="text-xs text-sky-300 font-semibold mb-3">
-                    Tavalisel lasul kaotab kapten pihtasaamisel 1 elu (ULTRA ALL IN lasuga 3 elu!).
+                  <p className="text-sm sm:text-base text-sky-200 font-extrabold mb-3">
+                    Kes ei riski, see šampust ei joo – või julged võtta ULTRA ALL IN?! 🔥
                   </p>
                 )}
 

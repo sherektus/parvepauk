@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Camera, Upload, ArrowLeft, Play, X, Users, Ship, QrCode, Smartphone } from 'lucide-react'
 import QRCode from 'qrcode'
-import { BRAINROT_CHARACTERS, PLAYER_COLORS, type BrainrotId } from '../data/gameContent'
+import { BRAINROT_CHARACTERS, PLAYER_COLORS, PLAYER_COUNT_SLOGANS, type BrainrotId } from '../data/gameContent'
 import { convertImageToPixelAvatar, createBrainrotAvatar } from '../utils/pixelAvatar'
 import { sound } from '../utils/sound'
 
@@ -85,11 +85,18 @@ export const SetupModal: React.FC<SetupModalProps> = ({
     }
   }, [sessionId])
 
-  // Listen for mobile QR avatar uploads (via ntfy.sh HTTPS relay, local Vite poll, and BroadcastChannel)
+  // Listen for mobile QR avatar uploads (via ntfy.sh HTTPS SSE + JSON poll, local Vite poll, and BroadcastChannel)
   useEffect(() => {
+    const seenIds = new Set<string>()
+    const seenPayloads = new Set<string>()
+
     const applyAvatar = (playerNum: number, avatarDataUrl: string) => {
       const idx = playerNum - 1
       if (idx < 0 || idx >= 6 || !avatarDataUrl.startsWith('data:image/')) return
+      const sig = `${idx}:${avatarDataUrl.slice(-48)}`
+      if (seenPayloads.has(sig)) return
+      seenPayloads.add(sig)
+
       sound.playHit()
       onUpdatePlayer(idx, {
         captainAvatar: avatarDataUrl,
@@ -97,6 +104,43 @@ export const SetupModal: React.FC<SetupModalProps> = ({
         selectedBrainrotId: undefined,
       })
       setActiveQrIdx((curr) => (curr === idx ? null : curr))
+    }
+
+    const parseAndApplyNtfyItem = (outer: {
+      id?: string
+      event?: string
+      message?: string
+      attachment?: { url?: string }
+    }) => {
+      if (!outer || outer.event !== 'message') return
+      if (outer.id) {
+        if (seenIds.has(outer.id)) return
+        seenIds.add(outer.id)
+      }
+
+      const handleRawJson = (rawText: string) => {
+        try {
+          const inner = JSON.parse(rawText)
+          const pNum = Number(inner?.p ?? inner?.player)
+          const imgUrl = String(inner?.img ?? inner?.avatarDataUrl ?? '')
+          if (pNum && imgUrl.startsWith('data:image/')) {
+            applyAvatar(pNum, imgUrl)
+          }
+        } catch {
+          // Ignore non-JSON
+        }
+      }
+
+      if (outer.attachment?.url) {
+        fetch(outer.attachment.url)
+          .then((r) => (r.ok ? r.text() : ''))
+          .then((txt) => {
+            if (txt) handleRawJson(txt)
+          })
+          .catch(() => {})
+      } else if (outer.message) {
+        handleRawJson(outer.message)
+      }
     }
 
     // 1. BroadcastChannel for same-device testing
@@ -113,19 +157,15 @@ export const SetupModal: React.FC<SetupModalProps> = ({
       // Ignore
     }
 
-    // 2. Real-time Server-Sent Events via ntfy.sh (works on GitHub Pages & across mobile networks)
+    // 2. Real-time Server-Sent Events via ntfy.sh
+    const topicUrl = `https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}`
     let es: EventSource | null = null
     try {
-      es = new EventSource(`https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}/sse`)
+      es = new EventSource(`${topicUrl}/sse`)
       es.onmessage = (ev) => {
         try {
           const outer = JSON.parse(ev.data)
-          if (outer?.event === 'message' && outer.message) {
-            const inner = JSON.parse(outer.message)
-            if (inner?.type === 'AVATAR_READY' && inner.avatarDataUrl) {
-              applyAvatar(Number(inner.player), String(inner.avatarDataUrl))
-            }
-          }
+          parseAndApplyNtfyItem(outer)
         } catch {
           // Ignore malformed message
         }
@@ -134,8 +174,26 @@ export const SetupModal: React.FC<SetupModalProps> = ({
       // Ignore if offline
     }
 
-    // 3. Local Vite server polling (works on offline local WiFi LAN)
+    // 3. Active HTTPS JSON polling + local Vite server polling every 1.5s
     const pollTimer = setInterval(() => {
+      // Poll ntfy.sh JSON feed (fallback if browser blocks SSE streams)
+      fetch(`${topicUrl}/json?poll=1&since=45s`)
+        .then((r) => (r.ok ? r.text() : ''))
+        .then((text) => {
+          if (!text) return
+          const lines = text.trim().split('\n')
+          for (const line of lines) {
+            if (!line.trim()) continue
+            try {
+              parseAndApplyNtfyItem(JSON.parse(line))
+            } catch {
+              // Ignore
+            }
+          }
+        })
+        .catch(() => {})
+
+      // Poll local Vite server (works on offline local WiFi LAN)
       fetch(`/api/session/poll?session=${encodeURIComponent(sessionId)}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -148,7 +206,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
           }
         })
         .catch(() => {})
-    }, 1800)
+    }, 1500)
 
     return () => {
       if (bc) bc.close()
@@ -300,7 +358,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
       {/* Player Count Selector (2 to 6 players) */}
       <div className="max-w-5xl w-full mx-auto my-4 bg-slate-900/95 border-4 border-amber-400 p-4 pixel-box">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-amber-300 font-pixel text-xs">
+          <div className="flex items-center gap-2 text-amber-300 font-pixel text-xs sm:text-sm">
             <Users className="w-5 h-5" />
             <span>VALI MÄNGIJATE ARV:</span>
           </div>
@@ -311,7 +369,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                 cnt === 2
                   ? '2 (Kahekesi 1v1)'
                   : cnt === 6
-                  ? '6 (Tiimid 3v3 – igal oma paat!)'
+                  ? '6 (Tiimid 3v3)'
                   : `${cnt} mängijat`
               return (
                 <button
@@ -322,7 +380,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                     stopWebcam()
                     onChangePlayerCount(cnt)
                   }}
-                  className={`px-3.5 py-2 font-bold text-sm pixel-btn ${
+                  className={`px-4 py-2 font-extrabold text-sm sm:text-base pixel-btn ${
                     isSelected
                       ? 'bg-amber-400 text-slate-950 scale-105'
                       : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
@@ -334,11 +392,9 @@ export const SetupModal: React.FC<SetupModalProps> = ({
             })}
           </div>
         </div>
-        {playerCount > 2 && (
-          <p className="text-xs text-sky-200 font-semibold mt-2.5 text-center">
-            Mitmikmängus saab iga tiimiliige endale oma paadi! Enne lasku avaneb pealtvaates mereklaart, kus saad klikkida vastase paadile ja valida, keda rünnata.
-          </p>
-        )}
+        <p className="text-base sm:text-lg text-amber-300 font-extrabold mt-3 text-center">
+          {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem – tuld kõigi pihta! 💥'}
+        </p>
       </div>
 
       {webcamError && (

@@ -240,3 +240,12 @@ export const GAME_RULES = [
     text: 'Pihtasaamisel joob panuse vastane, möödalasul laskja ise. Pärast põhilasku keerleb riskiratas ning kaptenid loobivad kordamööda „Su ema“ nalju!',
   },
 ];
+
+
+export const PLAYER_COUNT_SLOGANS: Record<number, string> = {
+  2: 'Kaks kanget vastamisi – kes jääb pinnale?! ⚔️',
+  3: 'Seltsis segasem – kolm paati, kolm korda rohkem pauku! 💥',
+  4: 'Seltsis segasem – neli kaptenit ja täielik merepidu! 🍻',
+  5: 'Mida rohkem, seda uhkem – keegi ei pääse kuiva nahaga! 🌊',
+  6: 'Seltsis segasem – täismaja laevastik ja täielik kaos! 🔥',
+};

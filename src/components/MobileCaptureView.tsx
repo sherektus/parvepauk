@@ -145,11 +145,20 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
     setSending(true)
     setErrorMsg(null)
     try {
+      // Ensure compact inline payload (< 3.5 KB) so ntfy.sh never turns it into a file attachment
+      let compactAvatar = pixelPreview
+      if (compactAvatar.length > 3500 && rawImage) {
+        compactAvatar = convertImageToPixelAvatar(rawImage, crop, 36, 36)
+      }
+      if (compactAvatar.length > 3500 && rawImage) {
+        compactAvatar = convertImageToPixelAvatar(rawImage, crop, 28, 28)
+      }
+
       const payload = {
         type: 'AVATAR_READY',
         sessionId,
         player: playerNumber,
-        avatarDataUrl: pixelPreview,
+        avatarDataUrl: compactAvatar,
       }
 
       let deliveredOk = false
@@ -179,7 +188,11 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
       try {
         const ntfyRes = await fetch(`https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}`, {
           method: 'POST',
-          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+          body: JSON.stringify({
+            p: playerNumber,
+            img: compactAvatar,
+          }),
         })
         if (ntfyRes.ok) {
           deliveredOk = true
