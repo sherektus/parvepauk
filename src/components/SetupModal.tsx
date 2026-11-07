@@ -244,16 +244,11 @@ export const SetupModal: React.FC<SetupModalProps> = ({
   const handleTryStartGame = () => {
     sound.playClick()
     if (leftTeamCount === 0 || rightTeamCount === 0) {
-      setWebcamError(
-        'Mõlemas tiimis ( nii vasakus kui ka paremas tiimis) peab olema vähemalt üks mängija!'
-      )
+      setWebcamError('Mõlemas tiimis peab keegi olema!')
       return
     }
     if (playerCount % 2 === 0 && leftTeamCount !== rightTeamCount) {
-      const half = playerCount / 2
-      setWebcamError(
-        `Paarisarvu mängijate (${playerCount}) puhul peab mõlemas tiimis olema sama palju inimesi (${half} vasakul ja ${half} paremal)!`
-      )
+      setWebcamError('Tee tiimid võrdseks!')
       return
     }
     stopWebcam()
@@ -333,11 +328,6 @@ export const SetupModal: React.FC<SetupModalProps> = ({
           <div className="text-xs sm:text-sm font-bold text-sky-200">
             Vasak tiim: <span className="text-amber-300">{leftTeamCount}</span> | Parem tiim:{' '}
             <span className="text-sky-300">{rightTeamCount}</span>
-            {playerCount % 2 === 0 && (
-              <span className="text-slate-400 ml-2">
-                (nõutud {playerCount / 2} vs {playerCount / 2})
-              </span>
-            )}
           </div>
         </div>
       </div>
