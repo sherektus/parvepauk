@@ -118,7 +118,7 @@ export function App() {
               <h1 className="font-pixel text-2xl sm:text-3xl text-amber-300">PARVEPAUK</h1>
               <div className="mt-3 inline-block -rotate-2 bg-rose-600 border-4 border-amber-300 px-3.5 py-1 pixel-box">
                 <span className="font-pixel text-[10px] sm:text-xs text-amber-200 tracking-wider drop-shadow-[2px_2px_0_#0f172a]">
-                  🐻 MADE BY KARU PEREKOND 🐻
+                  MADE BY KARU PEREKOND
                 </span>
               </div>
             </div>
@@ -190,7 +190,7 @@ export function App() {
                     : 'bg-rose-600 hover:bg-rose-500 text-white'
                 }`}
               >
-                {noTurnedToSuperJa ? '100% SERTIFITSEERITUD JOBID! 🍼' : 'EI'}
+                {noTurnedToSuperJa ? '100% SERTIFITSEERITUD JOBID!' : 'EI'}
               </button>
             </div>
           </div>
@@ -269,7 +269,7 @@ export function App() {
               </h1>
               <div className="mt-3 inline-block -rotate-2 bg-rose-600 border-4 border-amber-300 px-4 py-1.5 pixel-box">
                 <span className="font-pixel text-xs sm:text-sm text-amber-200 tracking-wider drop-shadow-[2px_2px_0_#0f172a]">
-                  🐻 MADE BY KARU PEREKOND 🐻
+                  MADE BY KARU PEREKOND
                 </span>
               </div>
               <p className="text-sky-200 text-lg font-semibold mt-3">
@@ -303,7 +303,7 @@ export function App() {
                 ))}
               </div>
               <p className="text-lg sm:text-xl font-extrabold text-amber-300 pt-1">
-                {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem! 💥'}
+                {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem!'}
               </p>
             </div>
 
@@ -311,6 +311,21 @@ export function App() {
               <button
                 onClick={() => {
                   sound.playClick()
+                  const active = players.slice(0, playerCount)
+                  const leftCount = active.filter((p) => p.team === 0).length
+                  const rightCount = active.filter((p) => p.team === 1).length
+                  const isInvalid =
+                    leftCount === 0 ||
+                    rightCount === 0 ||
+                    (playerCount % 2 === 0 && leftCount !== rightCount)
+                  if (isInvalid) {
+                    setPlayers((prev) =>
+                      prev.map((p, i) => ({
+                        ...p,
+                        team: (i % 2) as 0 | 1,
+                      }))
+                    )
+                  }
                   setScreen('battle')
                 }}
                 className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-pixel text-sm pixel-btn flex items-center justify-center gap-3"
@@ -344,7 +359,7 @@ export function App() {
           </div>
 
           <div className="text-center text-base sm:text-lg text-amber-300/90 font-extrabold">
-            Lae kahurid ja põhja! 🏴‍☠️🍻
+            Lae kahurid ja põhja!
           </div>
         </div>
       )}

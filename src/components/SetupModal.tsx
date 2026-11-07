@@ -225,6 +225,8 @@ export const SetupModal: React.FC<SetupModalProps> = ({
   }
 
   const activePlayers = players.slice(0, playerCount)
+  const leftTeamCount = activePlayers.filter((p) => p.team === 0).length
+  const rightTeamCount = activePlayers.filter((p) => p.team === 1).length
 
   const handleSelectTeam = (idx: number, newTeam: 0 | 1) => {
     sound.playClick()
@@ -241,11 +243,16 @@ export const SetupModal: React.FC<SetupModalProps> = ({
 
   const handleTryStartGame = () => {
     sound.playClick()
-    const hasLeft = activePlayers.some((p) => p.team === 0)
-    const hasRight = activePlayers.some((p) => p.team === 1)
-    if (!hasLeft || !hasRight) {
+    if (leftTeamCount === 0 || rightTeamCount === 0) {
       setWebcamError(
-        'Mõlemas tiimis (⬅️ Vasak tiim ja Parem tiim ➡️) peab olema vähemalt 1 mängija!'
+        'Mõlemas tiimis ( nii vasakus kui ka paremas tiimis) peab olema vähemalt üks mängija!'
+      )
+      return
+    }
+    if (playerCount % 2 === 0 && leftTeamCount !== rightTeamCount) {
+      const half = playerCount / 2
+      setWebcamError(
+        `Paarisarvu mängijate (${playerCount}) puhul peab mõlemas tiimis olema sama palju inimesi (${half} vasakul ja ${half} paremal)!`
       )
       return
     }
@@ -319,9 +326,20 @@ export const SetupModal: React.FC<SetupModalProps> = ({
             })}
           </div>
         </div>
-        <p className="text-lg sm:text-xl text-amber-300 font-extrabold mt-3 text-center">
-          {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem! 💥'}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 pt-2.5">
+          <p className="text-base sm:text-lg text-amber-300 font-extrabold">
+            {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem!'}
+          </p>
+          <div className="text-xs sm:text-sm font-bold text-sky-200">
+            Vasak tiim: <span className="text-amber-300">{leftTeamCount}</span> | Parem tiim:{' '}
+            <span className="text-sky-300">{rightTeamCount}</span>
+            {playerCount % 2 === 0 && (
+              <span className="text-slate-400 ml-2">
+                (nõutud {playerCount / 2} vs {playerCount / 2})
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {webcamError && (
@@ -390,7 +408,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   }`}
                 >
-                  ⬅️ VASAK TIIM
+                  VASAK TIIM
                 </button>
                 <button
                   type="button"
@@ -401,7 +419,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   }`}
                 >
-                  PAREM TIIM ➡️
+                  PAREM TIIM
                 </button>
               </div>
 

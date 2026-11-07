@@ -13,12 +13,12 @@ interface RiskWheelModalProps {
 }
 
 const SLICE_BADGES: Record<WheelOutcome['id'], string> = {
-  double_shot: '🎯 +1 LASK',
-  shield: '🛡️ KAITSE',
-  wind_reverse: '🌪️ TAGURPIDI',
-  counter_sip: '🍺 +1 LONKS',
-  bad_luck: '💀 VAHELE',
-  escape: '⚓ PUHAS',
+  double_shot: '+1 LASK',
+  shield: 'KAITSE',
+  wind_reverse: 'TAGURPIDI',
+  counter_sip: '+1 LONKS',
+  bad_luck: 'VAHELE',
+  escape: 'PUHAS',
 }
 
 export const RiskWheelModal: React.FC<RiskWheelModalProps> = ({
@@ -138,7 +138,7 @@ export const RiskWheelModal: React.FC<RiskWheelModalProps> = ({
     <div className="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="max-w-xl w-full bg-slate-900 border-4 border-amber-400 p-6 pixel-box text-center">
         <h2 className="font-pixel text-base sm:text-lg text-amber-300 mb-1">
-          {isUltraAllIn ? '🔥 ULTRA ALL IN RISKIRATAS 🔥' : 'RISKIRATAS'}
+          {isUltraAllIn ? 'ULTRA ALL IN RISKIRATAS' : 'RISKIRATAS'}
         </h2>
         <p className="text-sm sm:text-base text-sky-200 font-bold mb-4">
           {shieldBlocked

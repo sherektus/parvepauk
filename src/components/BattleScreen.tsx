@@ -202,8 +202,8 @@ function rollTurnBetOptions(): [BetOption, BetOption, BetOption] {
       id: 'ultra',
       sips: ultraSips,
       captainDamage: 3,
-      label: `🔥 ULTRA ALL IN (${ultraSips} LONKSU) 🔥`,
-      subLabel: '💥 KAPTENILE PIHTA: -3 ELU! 💥',
+      label: `ULTRA ALL IN (${ultraSips} LONKSU)`,
+      subLabel: 'KAPTENILE PIHTA: -3 ELU!',
       raftLeftX: 170,
       raftRightX: 1110,
     },
@@ -419,7 +419,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
         maxRadius: 115,
         life: 0,
         maxLife: 28,
-        label: '💥 PAUK! 💥',
+        label: 'PAUK!',
       })
     }
   }
@@ -849,7 +849,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
             const splashX = Math.max(40, Math.min(CANVAS_W - 40, proj.x))
             sound.playSplash()
             spawnSplash(splashX, WATER_Y, '#bae6fd', 48, true)
-            addBanner(splashX, WATER_Y - 58, '💦 PLÄRTS! MÖÖDA! 💦', '#7dd3fc')
+            addBanner(splashX, WATER_Y - 58, 'PLÄRTS! MÖÖDA!', '#7dd3fc')
             projectileRef.current = null
             setTimeout(() => {
               resolveShotEnd(
@@ -1646,7 +1646,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   {activePlayer.team === 0 ? 'Tiim 1' : 'Tiim 2'})
                 </h2>
                 <p className="text-sky-200 font-extrabold text-lg sm:text-xl">
-                  Vali ohver! 💥
+                  Vali ohver!
                 </p>
               </div>
 
@@ -1876,12 +1876,12 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
 
                 {isUltraAllIn ? (
                   <div className="bg-rose-950 border-2 border-amber-400 px-3 py-2 mb-3.5 text-sm font-bold text-amber-300">
-                    ⚡ ULTRA ALL IN ERIEFEKT: Kui saad vastase kaptenile pihta, kaotab ta korraga{' '}
+                    ULTRA ALL IN ERIEFEKT: Kui saad vastase kaptenile pihta, kaotab ta korraga{' '}
                     <span className="text-white underline">3 ELU</span> (teiste valikutega 1 elu)!
                   </div>
                 ) : (
                   <p className="text-base sm:text-lg text-sky-200 font-extrabold mb-3">
-                    Kes ei riski, see ei joo! 🔥
+                    Kes ei riski, see ei joo!
                   </p>
                 )}
 

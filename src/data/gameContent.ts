@@ -243,9 +243,9 @@ export const GAME_RULES = [
 
 
 export const PLAYER_COUNT_SLOGANS: Record<number, string> = {
-  2: 'Mees mehe vastu! ⚔️',
-  3: 'Kolm on seltskond! 💥',
-  4: 'Seltsis segasem! 🍻',
-  5: 'Mida rohkem, seda uhkem! 🌊',
-  6: 'Täismaja kaos! 🔥',
+  2: 'Mees mehe vastu!',
+  3: 'Kolm on seltskond!',
+  4: 'Seltsis segasem!',
+  5: 'Mida rohkem, seda uhkem!',
+  6: 'Täismaja kaos!',
 };
