@@ -7,6 +7,7 @@ import {
   createBrainrotAvatar,
   ensureNeutralAvatarBackground,
 } from '../utils/pixelAvatar'
+import { subscribeToSessionAvatars } from '../utils/qrSync'
 import { sound } from '../utils/sound'
 
 export interface PlayerSetupConfig {
@@ -89,12 +90,11 @@ export const SetupModal: React.FC<SetupModalProps> = ({
     }
   }, [sessionId])
 
-  // Listen for mobile QR avatar uploads (via ntfy.sh HTTPS SSE + JSON poll, local Vite poll, and BroadcastChannel)
+  // Listen for mobile QR avatar uploads via dual MQTT over WebSockets + local Vite poll + BroadcastChannel
   useEffect(() => {
-    const seenIds = new Set<string>()
     const seenPayloads = new Set<string>()
 
-    const applyAvatar = (playerNum: number, avatarDataUrl: string) => {
+    const unsubscribe = subscribeToSessionAvatars(sessionId, (playerNum, avatarDataUrl) => {
       const idx = playerNum - 1
       if (idx < 0 || idx >= 6 || !avatarDataUrl.startsWith('data:image/')) return
       const sig = `${idx}:${avatarDataUrl.slice(-48)}`
@@ -110,114 +110,10 @@ export const SetupModal: React.FC<SetupModalProps> = ({
         })
         setActiveQrIdx((curr) => (curr === idx ? null : curr))
       })
-    }
-
-    const parseAndApplyNtfyItem = (outer: {
-      id?: string
-      event?: string
-      message?: string
-      attachment?: { url?: string }
-    }) => {
-      if (!outer || outer.event !== 'message') return
-      if (outer.id) {
-        if (seenIds.has(outer.id)) return
-        seenIds.add(outer.id)
-      }
-
-      const handleRawJson = (rawText: string) => {
-        try {
-          const inner = JSON.parse(rawText)
-          const pNum = Number(inner?.p ?? inner?.player)
-          const imgUrl = String(inner?.img ?? inner?.avatarDataUrl ?? '')
-          if (pNum && imgUrl.startsWith('data:image/')) {
-            applyAvatar(pNum, imgUrl)
-          }
-        } catch {
-          // Ignore non-JSON
-        }
-      }
-
-      if (outer.attachment?.url) {
-        fetch(outer.attachment.url)
-          .then((r) => (r.ok ? r.text() : ''))
-          .then((txt) => {
-            if (txt) handleRawJson(txt)
-          })
-          .catch(() => {})
-      } else if (outer.message) {
-        handleRawJson(outer.message)
-      }
-    }
-
-    // 1. BroadcastChannel for same-device testing
-    let bc: BroadcastChannel | null = null
-    try {
-      bc = new BroadcastChannel('parvepauk_sync')
-      bc.onmessage = (ev) => {
-        const data = ev.data
-        if (data?.type === 'AVATAR_READY' && data.sessionId === sessionId) {
-          applyAvatar(Number(data.player), String(data.avatarDataUrl))
-        }
-      }
-    } catch {
-      // Ignore
-    }
-
-    // 2. Real-time Server-Sent Events via ntfy.sh
-    const topicUrl = `https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}`
-    let es: EventSource | null = null
-    try {
-      es = new EventSource(`${topicUrl}/sse`)
-      es.onmessage = (ev) => {
-        try {
-          const outer = JSON.parse(ev.data)
-          parseAndApplyNtfyItem(outer)
-        } catch {
-          // Ignore malformed message
-        }
-      }
-    } catch {
-      // Ignore if offline
-    }
-
-    // 3. Active HTTPS JSON polling + local Vite server polling every 1.5s
-    const pollTimer = setInterval(() => {
-      // Poll ntfy.sh JSON feed (fallback if browser blocks SSE streams)
-      fetch(`${topicUrl}/json?poll=1&since=45s`)
-        .then((r) => (r.ok ? r.text() : ''))
-        .then((text) => {
-          if (!text) return
-          const lines = text.trim().split('\n')
-          for (const line of lines) {
-            if (!line.trim()) continue
-            try {
-              parseAndApplyNtfyItem(JSON.parse(line))
-            } catch {
-              // Ignore
-            }
-          }
-        })
-        .catch(() => {})
-
-      // Poll local Vite server (works on offline local WiFi LAN)
-      fetch(`/api/session/poll?session=${encodeURIComponent(sessionId)}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => {
-          if (data?.avatars) {
-            Object.entries(data.avatars).forEach(([pKey, url]) => {
-              if (typeof url === 'string') {
-                applyAvatar(Number(pKey), url)
-              }
-            })
-          }
-        })
-        .catch(() => {})
-    }, 1500)
+    })
 
     return () => {
-      if (bc) bc.close()
-      if (es) es.close()
-      clearInterval(pollTimer)
+      unsubscribe()
     }
   }, [sessionId, onUpdatePlayer])
 
@@ -330,6 +226,33 @@ export const SetupModal: React.FC<SetupModalProps> = ({
 
   const activePlayers = players.slice(0, playerCount)
 
+  const handleSelectTeam = (idx: number, newTeam: 0 | 1) => {
+    sound.playClick()
+    setWebcamError(null)
+    if (playerCount === 2) {
+      // In 1v1 mode, automatically put the other player on the opposite side
+      const otherIdx = idx === 0 ? 1 : 0
+      onUpdatePlayer(idx, { team: newTeam })
+      onUpdatePlayer(otherIdx, { team: (1 - newTeam) as 0 | 1 })
+    } else {
+      onUpdatePlayer(idx, { team: newTeam })
+    }
+  }
+
+  const handleTryStartGame = () => {
+    sound.playClick()
+    const hasLeft = activePlayers.some((p) => p.team === 0)
+    const hasRight = activePlayers.some((p) => p.team === 1)
+    if (!hasLeft || !hasRight) {
+      setWebcamError(
+        'Mõlemas tiimis (⬅️ Vasak tiim ja Parem tiim ➡️) peab olema vähemalt 1 mängija!'
+      )
+      return
+    }
+    stopWebcam()
+    onStartGame()
+  }
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-sky-900 via-sky-950 to-slate-950 flex flex-col justify-between p-4 lg:p-6">
       {/* Top Bar */}
@@ -351,11 +274,7 @@ export const SetupModal: React.FC<SetupModalProps> = ({
         </h1>
 
         <button
-          onClick={() => {
-            sound.playClick()
-            stopWebcam()
-            onStartGame()
-          }}
+          onClick={handleTryStartGame}
           className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-pixel text-xs lg:text-sm pixel-btn flex items-center gap-2"
         >
           <Play className="w-5 h-5 fill-current" />
@@ -425,10 +344,10 @@ export const SetupModal: React.FC<SetupModalProps> = ({
             PLAYER_COLORS[idx % PLAYER_COLORS.length]
           const teamLabel =
             playerCount === 2
-              ? `${idx + 1}. MÄNGIJA`
+              ? `${idx + 1}. MÄNGIJA (${p.team === 0 ? 'VASAK TIIM' : 'PAREM TIIM'})`
               : p.team === 0
-              ? `TIIM 1 (VASAK LAEVASTIK) – PAAT #${idx + 1}`
-              : `TIIM 2 (PAREM LAEVASTIK) – PAAT #${idx + 1}`
+              ? `VASAK TIIM – PAAT #${idx + 1}`
+              : `PAREM TIIM – PAAT #${idx + 1}`
 
           return (
             <div
@@ -458,6 +377,32 @@ export const SetupModal: React.FC<SetupModalProps> = ({
                     />
                   ))}
                 </div>
+              </div>
+
+              {/* Left vs Right Team Selector */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSelectTeam(idx, 0)}
+                  className={`py-1.5 px-2 font-extrabold text-xs pixel-btn flex items-center justify-center gap-1 ${
+                    p.team === 0
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  ⬅️ VASAK TIIM
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectTeam(idx, 1)}
+                  className={`py-1.5 px-2 font-extrabold text-xs pixel-btn flex items-center justify-center gap-1 ${
+                    p.team === 1
+                      ? 'bg-sky-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  PAREM TIIM ➡️
+                </button>
               </div>
 
               <div>

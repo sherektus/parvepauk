@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Camera, Check, RefreshCw, ZoomIn, Move, AlertTriangle } from 'lucide-react'
 import { convertImageToPixelAvatar } from '../utils/pixelAvatar'
+import { publishAvatarToDesktop } from '../utils/qrSync'
 
 interface MobileCaptureViewProps {
   sessionId: string
@@ -169,70 +170,11 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
     setSending(true)
     setErrorMsg(null)
     try {
-      // Ensure compact inline payload (< 3.5 KB) so ntfy.sh never turns it into a file attachment
-      let compactAvatar = pixelPreview
-      if (compactAvatar.length > 3500 && rawImage) {
-        compactAvatar = convertImageToPixelAvatar(rawImage, crop, 36, 36)
-      }
-      if (compactAvatar.length > 3500 && rawImage) {
-        compactAvatar = convertImageToPixelAvatar(rawImage, crop, 28, 28)
-      }
-
-      const payload = {
-        type: 'AVATAR_READY',
+      const deliveredOk = await publishAvatarToDesktop({
         sessionId,
-        player: playerNumber,
-        avatarDataUrl: compactAvatar,
-      }
-
-      let deliveredOk = false
-
-      // 1. Try local Vite relay (works when phone & PC are on same WiFi LAN)
-      try {
-        const res = await fetch('/api/session/avatar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (res.status === 410) {
-          setExpired(true)
-          setRawImage(null)
-          setPixelPreview(null)
-          setSending(false)
-          return
-        }
-        if (res.ok) {
-          deliveredOk = true
-        }
-      } catch {
-        // Ignore if running on static GitHub Pages
-      }
-
-      // 2. Also send via public HTTPS relay so QR works anywhere (GitHub Pages, 4G/5G, or WiFi)
-      try {
-        const ntfyRes = await fetch(`https://ntfy.sh/parvepauk_${encodeURIComponent(sessionId)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-          body: JSON.stringify({
-            p: playerNumber,
-            img: compactAvatar,
-          }),
-        })
-        if (ntfyRes.ok) {
-          deliveredOk = true
-        }
-      } catch {
-        // Ignore if offline LAN
-      }
-
-      // 3. Also broadcast locally in case user opened the link on the same computer
-      try {
-        const bc = new BroadcastChannel('parvepauk_sync')
-        bc.postMessage(payload)
-        bc.close()
-      } catch {
-        // Ignore if BroadcastChannel unsupported
-      }
+        playerNumber,
+        avatarDataUrl: pixelPreview,
+      })
 
       if (!deliveredOk) {
         throw new Error('Saatmine ebaõnnestus')
