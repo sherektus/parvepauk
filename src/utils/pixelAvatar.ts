@@ -574,19 +574,9 @@ export function convertImageToPixelAvatar(
     ctx.fillRect(x, y, w, h)
   }
 
-  // A. Sky, Fluffy Clouds & Green Hills Backdrop
-  px(0, 0, '#1d4ed8', G, 9)
-  px(0, 9, '#2563eb', G, 9)
-  px(0, 18, '#38bdf8', G, 9)
-  px(0, 27, '#7dd3fc', G, 7)
-  px(0, 34, '#16a34a', G, 6)
-  px(0, 34, '#22c55e', 12, 2)
-  px(28, 34, '#22c55e', 12, 2)
-
-  px(2, 5, '#dbeafe', 7, 3)
-  px(3, 4, '#ffffff', 5, 3)
-  px(30, 7, '#dbeafe', 8, 3)
-  px(31, 6, '#ffffff', 6, 3)
+  // A. Clean Neutral Dark Backdrop (matching the selectable characters)
+  px(0, 0, '#0f172a', G, G)
+  px(1, 1, '#1e293b', G - 2, G - 2)
 
   // B. Back Hair Layer (for Long & Medium hairstyles)
   if (hairStyle === 0) {
