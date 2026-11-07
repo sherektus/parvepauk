@@ -392,8 +392,8 @@ export const SetupModal: React.FC<SetupModalProps> = ({
             })}
           </div>
         </div>
-        <p className="text-base sm:text-lg text-amber-300 font-extrabold mt-3 text-center">
-          {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem – tuld kõigi pihta! 💥'}
+        <p className="text-lg sm:text-xl text-amber-300 font-extrabold mt-3 text-center">
+          {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem! 💥'}
         </p>
       </div>
 

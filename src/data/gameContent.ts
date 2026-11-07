@@ -243,9 +243,9 @@ export const GAME_RULES = [
 
 
 export const PLAYER_COUNT_SLOGANS: Record<number, string> = {
-  2: 'Kaks kanget vastamisi – kes jääb pinnale?! ⚔️',
-  3: 'Seltsis segasem – kolm paati, kolm korda rohkem pauku! 💥',
-  4: 'Seltsis segasem – neli kaptenit ja täielik merepidu! 🍻',
-  5: 'Mida rohkem, seda uhkem – keegi ei pääse kuiva nahaga! 🌊',
-  6: 'Seltsis segasem – täismaja laevastik ja täielik kaos! 🔥',
+  2: 'Mees mehe vastu! ⚔️',
+  3: 'Kolm on seltskond! 💥',
+  4: 'Seltsis segasem! 🍻',
+  5: 'Mida rohkem, seda uhkem! 🌊',
+  6: 'Täismaja kaos! 🔥',
 };

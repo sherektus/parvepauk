@@ -1646,7 +1646,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                   {activePlayer.team === 0 ? 'Tiim 1' : 'Tiim 2'})
                 </h2>
                 <p className="text-sky-200 font-extrabold text-lg sm:text-xl">
-                  Vali ohver ja tõmba talle vesi peale! 💥
+                  Vali ohver! 💥
                 </p>
               </div>
 
@@ -1785,8 +1785,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                 })}
               </div>
 
-              <div className="text-center text-base sm:text-lg text-amber-300 font-extrabold">
-                Seltsis segasem – keegi peab täna põhja minema! 🏴‍☠️🍻
+              <div className="text-center text-lg sm:text-xl text-amber-300 font-extrabold">
+                Seltsis segasem! 🏴‍☠️🍻
               </div>
             </div>
           )}
@@ -1880,8 +1880,8 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
                     <span className="text-white underline">3 ELU</span> (teiste valikutega 1 elu)!
                   </div>
                 ) : (
-                  <p className="text-sm sm:text-base text-sky-200 font-extrabold mb-3">
-                    Kes ei riski, see šampust ei joo – või julged võtta ULTRA ALL IN?! 🔥
+                  <p className="text-base sm:text-lg text-sky-200 font-extrabold mb-3">
+                    Kes ei riski, see ei joo! 🔥
                   </p>
                 )}
 

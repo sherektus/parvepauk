@@ -302,8 +302,8 @@ export function App() {
                   </button>
                 ))}
               </div>
-              <p className="text-base sm:text-lg font-extrabold text-amber-300 pt-1">
-                {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem – tuld kõigi pihta! 💥'}
+              <p className="text-lg sm:text-xl font-extrabold text-amber-300 pt-1">
+                {PLAYER_COUNT_SLOGANS[playerCount] || 'Seltsis segasem! 💥'}
               </p>
             </div>
 
@@ -343,8 +343,8 @@ export function App() {
             </div>
           </div>
 
-          <div className="text-center text-sm sm:text-base text-amber-300/90 font-extrabold">
-            Vala klaasid täis, lae kahurid ja lase sõbrad põhja! 🏴‍☠️🍻
+          <div className="text-center text-base sm:text-lg text-amber-300/90 font-extrabold">
+            Lae kahurid ja põhja! 🏴‍☠️🍻
           </div>
         </div>
       )}
