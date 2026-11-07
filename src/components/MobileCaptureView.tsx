@@ -22,7 +22,15 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
 
   // Raw captured image kept strictly in memory and cleared after confirmation
   const [rawImage, setRawImage] = useState<HTMLImageElement | null>(null)
-  const [crop, setCrop] = useState({ offsetX: 0, offsetY: 0, zoom: 1.2 })
+  const [crop, setCrop] = useState({
+    offsetX: 0,
+    offsetY: 0,
+    zoom: 1.2,
+    hairStyleOffset: 0,
+    hairColorOffset: 0,
+    toggleGlasses: false,
+    toggleFacialHair: false,
+  })
   const [pixelPreview, setPixelPreview] = useState<string | null>(null)
 
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -99,7 +107,15 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
     const img = new Image()
     img.onload = () => {
       setRawImage(img)
-      setCrop({ offsetX: 0, offsetY: 0, zoom: 1.25 })
+      setCrop({
+        offsetX: 0,
+        offsetY: 0,
+        zoom: 1.25,
+        hairStyleOffset: 0,
+        hairColorOffset: 0,
+        toggleGlasses: false,
+        toggleFacialHair: false,
+      })
       setStep('crop_preview')
     }
     img.src = dataUrl
@@ -115,7 +131,15 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
       // Revoke temporary object URL immediately so nothing persists
       URL.revokeObjectURL(objUrl)
       setRawImage(img)
-      setCrop({ offsetX: 0, offsetY: 0, zoom: 1.25 })
+      setCrop({
+        offsetX: 0,
+        offsetY: 0,
+        zoom: 1.25,
+        hairStyleOffset: 0,
+        hairColorOffset: 0,
+        toggleGlasses: false,
+        toggleFacialHair: false,
+      })
       setStep('crop_preview')
     }
     img.onerror = () => {
@@ -356,6 +380,41 @@ export const MobileCaptureView: React.FC<MobileCaptureViewProps> = ({
               <div className="absolute bottom-1 right-1 bg-slate-950/85 px-2 py-0.5 text-xs text-amber-300 flex items-center gap-1">
                 <Move className="w-3 h-3" /> Lohista kärpimiseks
               </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() =>
+                  setCrop((c) => ({ ...c, hairStyleOffset: (c.hairStyleOffset || 0) + 1 }))
+                }
+                className="py-2 px-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs pixel-btn"
+              >
+                Soeng
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setCrop((c) => ({ ...c, hairColorOffset: (c.hairColorOffset || 0) + 1 }))
+                }
+                className="py-2 px-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs pixel-btn"
+              >
+                Juuksevärv
+              </button>
+              <button
+                type="button"
+                onClick={() => setCrop((c) => ({ ...c, toggleGlasses: !c.toggleGlasses }))}
+                className="py-2 px-1 bg-slate-800 hover:bg-slate-700 text-sky-200 font-bold text-xs pixel-btn"
+              >
+                Prillid
+              </button>
+              <button
+                type="button"
+                onClick={() => setCrop((c) => ({ ...c, toggleFacialHair: !c.toggleFacialHair }))}
+                className="py-2 px-1 bg-slate-800 hover:bg-slate-700 text-sky-200 font-bold text-xs pixel-btn"
+              >
+                Habe
+              </button>
             </div>
 
             <div className="bg-slate-800/90 p-3 border-2 border-slate-700 space-y-2">
